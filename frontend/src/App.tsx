@@ -1,39 +1,41 @@
-import type React from "react";
 import logo from "./assets/images/logo-universal.png";
 import "./App.css";
 import { useState } from "react";
-import { Greet } from "../wailsjs/go/main/App";
+import { RunTestSession } from "../wailsjs/go/main/App";
 
 function App() {
-	const [resultText, setResultText] = useState(
-		"Please enter your name below 👇",
+	const [status, setStatus] = useState(
+		"Press the button to run a test session",
 	);
-	const [name, setName] = useState("");
-	const updateName = (e: React.ChangeEvent<HTMLInputElement>) =>
-		setName(e.target.value);
-	const updateResultText = (result: string) => setResultText(result);
+	const [running, setRunning] = useState(false);
 
-	function greet() {
-		Greet(name).then(updateResultText);
+	async function runTestSession() {
+		setRunning(true);
+		setStatus("Running test session…");
+		try {
+			await RunTestSession();
+			setStatus("Done. Check ~/Desktop/pasha-tracer.pdf");
+		} catch (e) {
+			setStatus(`Failed: ${String(e)}`);
+		} finally {
+			setRunning(false);
+		}
 	}
 
 	return (
 		<div id="App">
 			<img src={logo} id="logo" alt="logo" />
 			<div id="result" className="result">
-				{resultText}
+				{status}
 			</div>
 			<div id="input" className="input-box">
-				<input
-					id="name"
-					className="input"
-					onChange={updateName}
-					autoComplete="off"
-					name="input"
-					type="text"
-				/>
-				<button type="button" className="btn" onClick={greet}>
-					Greet
+				<button
+					type="button"
+					className="btn"
+					onClick={runTestSession}
+					disabled={running}
+				>
+					テスト撮影
 				</button>
 			</div>
 		</div>
