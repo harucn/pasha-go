@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 01: Tracer bullet — 最小e2e Capture Session
 
