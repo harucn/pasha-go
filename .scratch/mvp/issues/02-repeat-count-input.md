@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 02: Repeat Count を UI で指定可能に
 
@@ -16,9 +16,9 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] UI で Repeat Count を変更し、開始すると指定した枚数のページが PDF に生成される
-- [ ] 0や負の値を入れた状態では開始されない
-- [ ] CaptureSession のテストには影響しない（既存テストが通り続ける）
+- [x] UI で Repeat Count を変更し、開始すると指定した枚数のページが PDF に生成される
+- [x] 0や負の値を入れた状態では開始されない
+- [x] CaptureSession のテストには影響しない（既存テストが通り続ける）
 
 ## Blocked by
 

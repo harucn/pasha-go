@@ -38,11 +38,16 @@ func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-// RunTestSession runs a hardcoded Capture Session as a tracer-bullet
-// end-to-end test: 3 Capture Steps, full primary display as Capture Region,
-// screen center as Advance Click Point, 1s Step Interval, output to
-// ~/Desktop/pasha-tracer.pdf.
-func (a *App) RunTestSession() error {
+// RunTestSession runs a Capture Session as a tracer-bullet end-to-end test.
+// repeatCount comes from the frontend; the rest of the configuration is
+// still hardcoded (full primary display as Capture Region, screen center as
+// Advance Click Point, 1s Step Interval, output to ~/Desktop/pasha-tracer.pdf).
+// Returns an error immediately if repeatCount is not a positive integer.
+func (a *App) RunTestSession(repeatCount int) error {
+	if repeatCount < 1 {
+		return fmt.Errorf("repeat count must be >= 1, got %d", repeatCount)
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("home dir: %w", err)
@@ -60,7 +65,7 @@ func (a *App) RunTestSession() error {
 	cs := session.New(session.Config{
 		CaptureRegion:     bounds,
 		AdvanceClickPoint: center,
-		RepeatCount:       3,
+		RepeatCount:       repeatCount,
 		StepInterval:      1 * time.Second,
 		Screener:          screener.New(),
 		Clicker:           clicker.New(),
