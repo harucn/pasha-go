@@ -3,4 +3,4 @@
 
 export function Greet(arg1:string):Promise<string>;
 
-export function RunTestSession(arg1:number):Promise<void>;
+export function RunTestSession(arg1:number,arg2:number):Promise<void>;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,13 +40,18 @@ func (a *App) Greet(name string) string {
 }
 
 // RunTestSession runs a Capture Session as a tracer-bullet end-to-end test.
-// repeatCount comes from the frontend; the rest of the configuration is
-// still hardcoded (full primary display as Capture Region, screen center as
-// Advance Click Point, 1s Step Interval, output to ~/Desktop/pasha-tracer.pdf).
-// Returns an error immediately if repeatCount is not a positive integer.
-func (a *App) RunTestSession(repeatCount int) error {
+// repeatCount and stepIntervalSeconds come from the frontend; the rest of
+// the configuration is still hardcoded (full primary display as Capture
+// Region, screen center as Advance Click Point, output to
+// ~/Desktop/pasha-tracer.pdf).
+// Returns an error immediately if repeatCount is not a positive integer or
+// stepIntervalSeconds is not a positive finite number.
+func (a *App) RunTestSession(repeatCount int, stepIntervalSeconds float64) error {
 	if repeatCount < 1 {
 		return fmt.Errorf("repeat count must be >= 1, got %d", repeatCount)
+	}
+	if math.IsNaN(stepIntervalSeconds) || math.IsInf(stepIntervalSeconds, 0) || stepIntervalSeconds <= 0 {
+		return fmt.Errorf("step interval must be a positive finite number of seconds, got %v", stepIntervalSeconds)
 	}
 
 	home, err := os.UserHomeDir()
@@ -66,7 +72,7 @@ func (a *App) RunTestSession(repeatCount int) error {
 		CaptureRegion:     bounds,
 		AdvanceClickPoint: center,
 		RepeatCount:       repeatCount,
-		StepInterval:      1 * time.Second,
+		StepInterval:      time.Duration(stepIntervalSeconds * float64(time.Second)),
 		Screener:          screener.New(),
 		Clicker:           clicker.New(),
 		PdfWriter:         pdf,

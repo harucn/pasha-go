@@ -9,16 +9,21 @@ function App() {
 	);
 	const [running, setRunning] = useState(false);
 	const [repeatCount, setRepeatCount] = useState("10");
+	const [stepInterval, setStepInterval] = useState("1.0");
 
 	const parsedRepeatCount = Number.parseInt(repeatCount, 10);
 	const repeatCountValid =
 		Number.isInteger(parsedRepeatCount) && parsedRepeatCount >= 1;
 
+	const parsedStepInterval = Number.parseFloat(stepInterval);
+	const stepIntervalValid =
+		Number.isFinite(parsedStepInterval) && parsedStepInterval > 0;
+
 	async function runTestSession() {
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
-			await RunTestSession(parsedRepeatCount);
+			await RunTestSession(parsedRepeatCount, parsedStepInterval);
 			setStatus("Done. Check ~/Desktop/pasha-tracer.pdf");
 		} catch (e) {
 			setStatus(`Failed: ${String(e)}`);
@@ -43,11 +48,21 @@ function App() {
 					value={repeatCount}
 					onChange={(e) => setRepeatCount(e.target.value)}
 				/>
+				<label htmlFor="step-interval">Step Interval (sec)</label>
+				<input
+					id="step-interval"
+					type="number"
+					className="input"
+					min={0.1}
+					step={0.1}
+					value={stepInterval}
+					onChange={(e) => setStepInterval(e.target.value)}
+				/>
 				<button
 					type="button"
 					className="btn"
 					onClick={runTestSession}
-					disabled={running || !repeatCountValid}
+					disabled={running || !repeatCountValid || !stepIntervalValid}
 				>
 					テスト撮影
 				</button>
