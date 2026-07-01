@@ -6,6 +6,6 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
-export function RunTestSession() {
-  return window['go']['main']['App']['RunTestSession']();
+export function RunTestSession(arg1) {
+  return window['go']['main']['App']['RunTestSession'](arg1);
 }

@@ -8,12 +8,17 @@ function App() {
 		"Press the button to run a test session",
 	);
 	const [running, setRunning] = useState(false);
+	const [repeatCount, setRepeatCount] = useState("10");
+
+	const parsedRepeatCount = Number.parseInt(repeatCount, 10);
+	const repeatCountValid =
+		Number.isInteger(parsedRepeatCount) && parsedRepeatCount >= 1;
 
 	async function runTestSession() {
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
-			await RunTestSession();
+			await RunTestSession(parsedRepeatCount);
 			setStatus("Done. Check ~/Desktop/pasha-tracer.pdf");
 		} catch (e) {
 			setStatus(`Failed: ${String(e)}`);
@@ -29,11 +34,20 @@ function App() {
 				{status}
 			</div>
 			<div id="input" className="input-box">
+				<label htmlFor="repeat-count">Repeat Count</label>
+				<input
+					id="repeat-count"
+					type="number"
+					className="input"
+					min={1}
+					value={repeatCount}
+					onChange={(e) => setRepeatCount(e.target.value)}
+				/>
 				<button
 					type="button"
 					className="btn"
 					onClick={runTestSession}
-					disabled={running}
+					disabled={running || !repeatCountValid}
 				>
 					テスト撮影
 				</button>
