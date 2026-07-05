@@ -31,3 +31,7 @@ _Avoid_: ディレイ、ウェイト
 **Output Document**:
 Capture Sessionの成果物として逐次追記されるマルチページPDF。
 _Avoid_: 出力ファイル、結果PDF
+
+**Capture Session Plan**:
+Capture Session を開始するために確定している入力一式：Repeat Count・Step Interval・Capture Region・Advance Click Point・Output Document の保存先とファイル名。ユーザーが「開始」を押した瞬間にスナップショットされ、以降のセッション内では変更されない。
+_Avoid_: 設定、パラメータ、リクエスト

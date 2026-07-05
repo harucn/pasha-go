@@ -4,30 +4,35 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"math"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/kbinani/screenshot"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"pasha-go/internal/capturerunner"
 	"pasha-go/internal/clicker"
 	"pasha-go/internal/clock"
-	"pasha-go/internal/outputpath"
-	"pasha-go/internal/pdfwriter"
 	"pasha-go/internal/screener"
-	"pasha-go/internal/session"
 )
 
-// App struct
+// App is the Wails-bound adapter. It holds the runtime context and a
+// pre-wired Runner; every method delegates its work behind the seam so
+// the adapter itself stays thin.
 type App struct {
-	ctx context.Context
+	ctx    context.Context
+	runner *capturerunner.Runner
 }
 
-// NewApp creates a new App application struct
+// NewApp constructs the App together with a Runner wired to the real
+// desktop collaborators.
 func NewApp() *App {
-	return &App{}
+	runner := capturerunner.New(
+		screener.New(),
+		clicker.New(),
+		clock.New(),
+		capturerunner.DefaultPdfWriterFactory,
+	)
+	return &App{runner: runner}
 }
 
 // startup is called when the app starts. The context is saved
@@ -72,54 +77,25 @@ type TestSessionParams struct {
 	OutputFileName      string  `json:"outputFileName"`
 }
 
-// RunTestSession runs a Capture Session as a tracer-bullet end-to-end test.
-// The Capture Region and Advance Click Point are still hardcoded (full
-// primary display, screen center). The Output Document is written to
-// OutputDir/OutputFileName.pdf, with numeric suffixes (-2, -3, ...) added
-// on collision so existing files are never overwritten.
-// Returns an error immediately if any input is invalid.
+// RunTestSession builds a Capture Session Plan from frontend inputs
+// (using primary-display defaults for Capture Region and Advance Click
+// Point) and delegates to the Runner. All validation, path resolution
+// and session construction live behind the Runner interface.
 func (a *App) RunTestSession(params TestSessionParams) error {
-	if params.RepeatCount < 1 {
-		return fmt.Errorf("repeat count must be >= 1, got %d", params.RepeatCount)
-	}
-	if math.IsNaN(params.StepIntervalSeconds) || math.IsInf(params.StepIntervalSeconds, 0) || params.StepIntervalSeconds <= 0 {
-		return fmt.Errorf("step interval must be a positive finite number of seconds, got %v", params.StepIntervalSeconds)
-	}
-	if strings.TrimSpace(params.OutputDir) == "" {
-		return fmt.Errorf("output directory must not be empty")
-	}
-	if strings.TrimSpace(params.OutputFileName) == "" {
-		return fmt.Errorf("output file name must not be empty")
-	}
-
-	desired := filepath.Join(params.OutputDir, params.OutputFileName+".pdf")
-	outPath, err := outputpath.Resolve(desired)
-	if err != nil {
-		return fmt.Errorf("resolve output path: %w", err)
-	}
-
 	bounds := screenshot.GetDisplayBounds(0)
 	center := image.Pt(bounds.Min.X+bounds.Dx()/2, bounds.Min.Y+bounds.Dy()/2)
-
-	pdf, err := pdfwriter.New(outPath)
-	if err != nil {
-		return fmt.Errorf("pdfwriter: %w", err)
-	}
-
-	cs := session.New(session.Config{
-		CaptureRegion:     bounds,
-		AdvanceClickPoint: center,
-		RepeatCount:       params.RepeatCount,
-		StepInterval:      time.Duration(params.StepIntervalSeconds * float64(time.Second)),
-		Screener:          screener.New(),
-		Clicker:           clicker.New(),
-		PdfWriter:         pdf,
-		Clock:             clock.New(),
-	})
 
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return cs.Start(ctx)
+
+	return a.runner.Run(ctx, capturerunner.Plan{
+		RepeatCount:         params.RepeatCount,
+		StepIntervalSeconds: params.StepIntervalSeconds,
+		CaptureRegion:       bounds,
+		AdvanceClickPoint:   center,
+		OutputDir:           params.OutputDir,
+		OutputFileName:      params.OutputFileName,
+	})
 }
