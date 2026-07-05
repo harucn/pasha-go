@@ -116,3 +116,38 @@
 	font-size: 0.85em;
 	color: #cfd9df;
 }
+
+.click-point-indicator {
+	margin-left: 10px;
+	font-size: 0.85em;
+	color: #cfd9df;
+}
+
+.click-point-marker {
+	position: absolute;
+	width: 24px;
+	height: 24px;
+	margin-left: -12px;
+	margin-top: -12px;
+	padding: 0;
+	border-radius: 50%;
+	background: #ff4d6d;
+	border: 2px solid #fff;
+	box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+	cursor: grab;
+	touch-action: none;
+	-webkit-app-region: no-drag;
+	z-index: 10000;
+}
+
+.click-point-marker::after {
+	content: "";
+	position: absolute;
+	inset: 8px;
+	background: #fff;
+	border-radius: 50%;
+}
+
+.click-point-marker:active {
+	cursor: grabbing;
+}

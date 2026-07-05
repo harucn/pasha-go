@@ -28,6 +28,7 @@ func validTestSessionParams() TestSessionParams {
 		OutputDir:           "/tmp",
 		OutputFileName:      "test",
 		CaptureRegion:       CaptureRegionInput{X: 10, Y: 20, Width: 100, Height: 50},
+		AdvanceClickPoint:   ClickPointInput{X: 60, Y: 45},
 	}
 }
 
@@ -69,15 +70,18 @@ func TestRunTestSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	}
 }
 
-func TestRunTestSession_SetsAdvanceClickPointToRegionCenter(t *testing.T) {
+func TestRunTestSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {
 	r := &fakeRunner{}
 	app := newAppWithRunner(r)
 
-	if err := app.RunTestSession(validTestSessionParams()); err != nil {
+	params := validTestSessionParams()
+	params.AdvanceClickPoint = ClickPointInput{X: 200, Y: 300}
+
+	if err := app.RunTestSession(params); err != nil {
 		t.Fatalf("RunTestSession: %v", err)
 	}
 
-	want := image.Pt(60, 45)
+	want := image.Pt(200, 300)
 	if got := r.lastPlan.AdvanceClickPoint; got != want {
 		t.Errorf("Plan.AdvanceClickPoint = %v, want %v", got, want)
 	}

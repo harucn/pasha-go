@@ -18,12 +18,27 @@ export namespace main {
 	        this.height = source["height"];
 	    }
 	}
+	export class ClickPointInput {
+	    x: number;
+	    y: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClickPointInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	    }
+	}
 	export class TestSessionParams {
 	    repeatCount: number;
 	    stepIntervalSeconds: number;
 	    outputDir: string;
 	    outputFileName: string;
 	    captureRegion: CaptureRegionInput;
+	    advanceClickPoint: ClickPointInput;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestSessionParams(source);
@@ -36,6 +51,7 @@ export namespace main {
 	        this.outputDir = source["outputDir"];
 	        this.outputFileName = source["outputFileName"];
 	        this.captureRegion = this.convertValues(source["captureRegion"], CaptureRegionInput);
+	        this.advanceClickPoint = this.convertValues(source["advanceClickPoint"], ClickPointInput);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
