@@ -12,6 +12,11 @@
 // relative to the *current* screen (not the global desktop), which breaks
 // on multi-display setups. See internal Wails source
 // internal/frontend/desktop/darwin/Application.m: GetPosition.
+//
+// The Cocoa helper only fetches raw values (NSWindow.frame in NSScreen
+// space + primary display height). The coordinate-space conversion is a
+// pure Go function in transform.go so it can be unit-tested without
+// requiring AppKit or physical displays.
 package appwindow
 
 /*
@@ -20,25 +25,26 @@ package appwindow
 #import <Cocoa/Cocoa.h>
 
 typedef struct {
-    int x;
-    int y;
-    int w;
-    int h;
+    int nsX;
+    int nsY;
+    int nsW;
+    int nsH;
+    int primaryH;
     int ok;
-} WindowRect;
+} RawFrame;
 
-// GetMainWindowRect fetches [NSApp mainWindow].frame, converts it from
-// NSScreen space (bottom-left global, points) to kbinani/screenshot's
-// Windows-coordinate (top-left of primary display, points), and returns
-// it. Must be safe to call from any goroutine, so dispatches to main.
-static WindowRect GetMainWindowRect(void) {
-    __block WindowRect r = {0, 0, 0, 0, 0};
+// GetRawWindowFrame fetches [NSApp mainWindow].frame in NSScreen space
+// (bottom-left global, points) together with the primary display height
+// in points. All coordinate math (y-axis flip, primary-relative origin)
+// happens in Go — see nsScreenToKbinani in transform.go.
+static RawFrame GetRawWindowFrame(void) {
+    __block RawFrame r = {0, 0, 0, 0, 0, 0};
 
     void (^work)(void) = ^{
         NSWindow* win = [NSApp mainWindow];
         if (!win) {
-            // Fallback: some Wails startup states leave keyWindow == nil.
-            // Pick the first visible window on screen.
+            // Some Wails startup states leave keyWindow == nil.
+            // Fall back to the first visible window.
             for (NSWindow* w in [NSApp windows]) {
                 if ([w isVisible]) {
                     win = w;
@@ -51,13 +57,11 @@ static WindowRect GetMainWindowRect(void) {
         NSRect frame = [win frame];
         CGRect primary = CGDisplayBounds(CGMainDisplayID());
 
-        // Flip y from NSScreen (bottom-left, y-up) to kbinani (top-left, y-down).
-        // The origin (0,0) of NSScreen space is the bottom-left of the primary
-        // display, so primary.size.height gives us the flip pivot in points.
-        r.x = (int)frame.origin.x;
-        r.y = (int)(primary.size.height - (frame.origin.y + frame.size.height));
-        r.w = (int)frame.size.width;
-        r.h = (int)frame.size.height;
+        r.nsX = (int)frame.origin.x;
+        r.nsY = (int)frame.origin.y;
+        r.nsW = (int)frame.size.width;
+        r.nsH = (int)frame.size.height;
+        r.primaryH = (int)primary.size.height;
         r.ok = 1;
     };
 
@@ -81,10 +85,12 @@ import (
 // coordinate space that kbinani/screenshot.Capture expects. Returns an
 // error only if no window is available yet (e.g., called before startup).
 func GetMainWindowRect() (image.Rectangle, error) {
-	r := C.GetMainWindowRect()
+	r := C.GetRawWindowFrame()
 	if r.ok == 0 {
 		return image.Rectangle{}, errors.New("appwindow: no main window available")
 	}
-	x, y, w, h := int(r.x), int(r.y), int(r.w), int(r.h)
-	return image.Rect(x, y, x+w, y+h), nil
+	return nsScreenToKbinani(
+		int(r.nsX), int(r.nsY), int(r.nsW), int(r.nsH),
+		int(r.primaryH),
+	), nil
 }
