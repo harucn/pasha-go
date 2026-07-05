@@ -166,63 +166,75 @@ function App() {
 
 	return (
 		<div id="App">
-			<img src={logo} id="logo" alt="logo" />
-			<div id="result" className="result">
-				{status}
-			</div>
-			<div id="input" className="input-box">
-				<label htmlFor="repeat-count">Repeat Count</label>
-				<input
-					id="repeat-count"
-					type="number"
-					className="input"
-					min={1}
-					value={repeatCount}
-					onChange={(e) => setRepeatCount(e.target.value)}
-				/>
-				<label htmlFor="step-interval">Step Interval (sec)</label>
-				<input
-					id="step-interval"
-					type="number"
-					className="input"
-					min={0.1}
-					step={0.1}
-					value={stepInterval}
-					onChange={(e) => setStepInterval(e.target.value)}
-				/>
-				<label htmlFor="output-file-name">File Name</label>
-				<input
-					id="output-file-name"
-					type="text"
-					className="input"
-					value={outputFileName}
-					onChange={(e) => setOutputFileName(e.target.value)}
-				/>
-				<button type="button" className="btn" onClick={chooseFolder}>
-					Choose Folder
-				</button>
-				<span className="output-dir">{outputDir || "(no folder chosen)"}</span>
-				<button type="button" className="btn" onClick={beginRegionSelection}>
-					範囲選択
-				</button>
-				<span className="region-indicator">
-					{region ? "範囲指定済み" : "(未指定)"}
-				</span>
-				<button
-					type="button"
-					className="btn"
-					onClick={runTestSession}
-					disabled={
-						running ||
-						!repeatCountValid ||
-						!stepIntervalValid ||
-						!outputsValid ||
-						!region
-					}
-				>
-					テスト撮影
-				</button>
-			</div>
+			{!selectingRegion && (
+				<div className="main-panel">
+					<img src={logo} id="logo" alt="logo" />
+					<div id="result" className="result">
+						{status}
+					</div>
+					<div id="input" className="input-box">
+						<label htmlFor="repeat-count">Repeat Count</label>
+						<input
+							id="repeat-count"
+							type="number"
+							className="input"
+							min={1}
+							value={repeatCount}
+							onChange={(e) => setRepeatCount(e.target.value)}
+						/>
+						<label htmlFor="step-interval">Step Interval (sec)</label>
+						<input
+							id="step-interval"
+							type="number"
+							className="input"
+							min={0.1}
+							step={0.1}
+							value={stepInterval}
+							onChange={(e) => setStepInterval(e.target.value)}
+						/>
+						<label htmlFor="output-file-name">File Name</label>
+						<input
+							id="output-file-name"
+							type="text"
+							className="input"
+							value={outputFileName}
+							onChange={(e) => setOutputFileName(e.target.value)}
+						/>
+						<button type="button" className="btn" onClick={chooseFolder}>
+							Choose Folder
+						</button>
+						<span className="output-dir">
+							{outputDir || "(no folder chosen)"}
+						</span>
+						<button
+							type="button"
+							className="btn"
+							onClick={beginRegionSelection}
+						>
+							範囲選択
+						</button>
+						<span className="region-indicator">
+							{region
+								? `範囲指定済み (${region.x},${region.y}) ${region.width}×${region.height}`
+								: "(未指定)"}
+						</span>
+						<button
+							type="button"
+							className="btn"
+							onClick={runTestSession}
+							disabled={
+								running ||
+								!repeatCountValid ||
+								!stepIntervalValid ||
+								!outputsValid ||
+								!region
+							}
+						>
+							テスト撮影
+						</button>
+					</div>
+				</div>
+			)}
 			{selectingRegion && (
 				<div
 					role="dialog"
@@ -232,6 +244,9 @@ function App() {
 					onMouseMove={handleOverlayMouseMove}
 					onMouseUp={handleOverlayMouseUp}
 				>
+					<div className="region-hint">
+						ドラッグで範囲を選択 / Esc でキャンセル
+					</div>
 					{rubberBand && (
 						<div
 							className="region-rubber-band"
@@ -241,7 +256,11 @@ function App() {
 								width: rubberBand.width,
 								height: rubberBand.height,
 							}}
-						/>
+						>
+							<span className="region-rubber-band-label">
+								{rubberBand.width} × {rubberBand.height}
+							</span>
+						</div>
 					)}
 				</div>
 			)}
