@@ -1,11 +1,26 @@
 import logo from "./assets/images/logo-universal.png";
 import "./App.css";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
 	RunTestSession,
 } from "../wailsjs/go/main/App";
+import {
+	ScreenGetAll,
+	WindowGetPosition,
+	WindowGetSize,
+	WindowSetAlwaysOnTop,
+	WindowSetPosition,
+	WindowSetSize,
+} from "../wailsjs/runtime/runtime";
+
+type CaptureRegion = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
 
 function App() {
 	const [status, setStatus] = useState(
@@ -16,16 +31,104 @@ function App() {
 	const [stepInterval, setStepInterval] = useState("1.0");
 	const [outputFileName, setOutputFileName] = useState("");
 	const [outputDir, setOutputDir] = useState("");
+	const [selectingRegion, setSelectingRegion] = useState(false);
+	const [region, setRegion] = useState<CaptureRegion | null>(null);
+	const [rubberBand, setRubberBand] = useState<{
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null>(null);
+	const dragStartRef = useRef<{
+		screen: { x: number; y: number };
+		client: { x: number; y: number };
+	} | null>(null);
+	const originalWindowRef = useRef<{
+		size: { w: number; h: number };
+		pos: { x: number; y: number };
+	} | null>(null);
+
+	const restoreWindow = useCallback(() => {
+		const orig = originalWindowRef.current;
+		WindowSetAlwaysOnTop(false);
+		if (orig) {
+			WindowSetPosition(orig.pos.x, orig.pos.y);
+			WindowSetSize(orig.size.w, orig.size.h);
+		}
+	}, []);
 
 	useEffect(() => {
 		DefaultOutputFileName().then(setOutputFileName);
 	}, []);
+
+	useEffect(() => {
+		if (!selectingRegion) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				dragStartRef.current = null;
+				setRubberBand(null);
+				restoreWindow();
+				setSelectingRegion(false);
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [selectingRegion, restoreWindow]);
 
 	async function chooseFolder() {
 		const chosen = await ChooseOutputDirectory();
 		if (chosen) {
 			setOutputDir(chosen);
 		}
+	}
+
+	async function beginRegionSelection() {
+		const [size, pos, screens] = await Promise.all([
+			WindowGetSize(),
+			WindowGetPosition(),
+			ScreenGetAll(),
+		]);
+		originalWindowRef.current = { size, pos };
+		const primary = screens.find((s) => s.isPrimary) ?? screens[0];
+		WindowSetAlwaysOnTop(true);
+		WindowSetPosition(0, 0);
+		WindowSetSize(primary.width, primary.height);
+		setSelectingRegion(true);
+	}
+
+	function handleOverlayMouseDown(event: React.MouseEvent<HTMLDivElement>) {
+		dragStartRef.current = {
+			screen: { x: event.screenX, y: event.screenY },
+			client: { x: event.clientX, y: event.clientY },
+		};
+		setRubberBand({ x: event.clientX, y: event.clientY, width: 0, height: 0 });
+	}
+
+	function handleOverlayMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+		const start = dragStartRef.current;
+		if (!start) return;
+		setRubberBand({
+			x: Math.min(start.client.x, event.clientX),
+			y: Math.min(start.client.y, event.clientY),
+			width: Math.abs(event.clientX - start.client.x),
+			height: Math.abs(event.clientY - start.client.y),
+		});
+	}
+
+	function handleOverlayMouseUp(event: React.MouseEvent<HTMLDivElement>) {
+		const start = dragStartRef.current;
+		if (!start) return;
+		const x = Math.min(start.screen.x, event.screenX);
+		const y = Math.min(start.screen.y, event.screenY);
+		const width = Math.abs(event.screenX - start.screen.x);
+		const height = Math.abs(event.screenY - start.screen.y);
+		dragStartRef.current = null;
+		setRubberBand(null);
+		if (width > 0 && height > 0) {
+			setRegion({ x, y, width, height });
+		}
+		restoreWindow();
+		setSelectingRegion(false);
 	}
 
 	const parsedRepeatCount = Number.parseInt(repeatCount, 10);
@@ -39,6 +142,7 @@ function App() {
 	const outputsValid = outputDir !== "" && outputFileName.trim() !== "";
 
 	async function runTestSession() {
+		if (!region) return;
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
@@ -47,6 +151,7 @@ function App() {
 				stepIntervalSeconds: parsedStepInterval,
 				outputDir,
 				outputFileName: outputFileName.trim(),
+				captureRegion: region,
 			});
 			setStatus(`Done. Check ${outputDir}/${outputFileName.trim()}.pdf`);
 		} catch (e) {
@@ -94,17 +199,49 @@ function App() {
 					Choose Folder
 				</button>
 				<span className="output-dir">{outputDir || "(no folder chosen)"}</span>
+				<button type="button" className="btn" onClick={beginRegionSelection}>
+					範囲選択
+				</button>
+				<span className="region-indicator">
+					{region ? "範囲指定済み" : "(未指定)"}
+				</span>
 				<button
 					type="button"
 					className="btn"
 					onClick={runTestSession}
 					disabled={
-						running || !repeatCountValid || !stepIntervalValid || !outputsValid
+						running ||
+						!repeatCountValid ||
+						!stepIntervalValid ||
+						!outputsValid ||
+						!region
 					}
 				>
 					テスト撮影
 				</button>
 			</div>
+			{selectingRegion && (
+				<div
+					role="dialog"
+					aria-label="Capture Region selection"
+					className="region-overlay"
+					onMouseDown={handleOverlayMouseDown}
+					onMouseMove={handleOverlayMouseMove}
+					onMouseUp={handleOverlayMouseUp}
+				>
+					{rubberBand && (
+						<div
+							className="region-rubber-band"
+							style={{
+								left: rubberBand.x,
+								top: rubberBand.y,
+								width: rubberBand.width,
+								height: rubberBand.height,
+							}}
+						/>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

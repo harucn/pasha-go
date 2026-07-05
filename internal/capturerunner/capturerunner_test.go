@@ -164,6 +164,23 @@ func TestRunner_Run_RejectsWhitespaceOnlyOutputFileName(t *testing.T) {
 	}
 }
 
+func TestRunner_Run_RejectsEmptyCaptureRegion(t *testing.T) {
+	empties := []image.Rectangle{
+		{},
+		image.Rect(0, 0, 0, 0),
+		image.Rect(10, 10, 10, 20), // zero width
+		image.Rect(10, 10, 20, 10), // zero height
+	}
+	for _, region := range empties {
+		r, _, _, _ := newRunnerWithFakes(t)
+		p := validPlan(t.TempDir())
+		p.CaptureRegion = region
+		if err := r.Run(context.Background(), p); err == nil {
+			t.Errorf("Run(CaptureRegion=%v): expected error, got nil", region)
+		}
+	}
+}
+
 func TestRunner_Run_ResolvesCollisionByAppendingSuffix(t *testing.T) {
 	dir := t.TempDir()
 	existing := filepath.Join(dir, "test.pdf")

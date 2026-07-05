@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -6,6 +6,14 @@ import {
 	DefaultOutputFileName,
 	RunTestSession,
 } from "../wailsjs/go/main/App";
+import {
+	ScreenGetAll,
+	WindowGetPosition,
+	WindowGetSize,
+	WindowSetAlwaysOnTop,
+	WindowSetPosition,
+	WindowSetSize,
+} from "../wailsjs/runtime/runtime";
 
 vi.mock("../wailsjs/go/main/App", () => ({
 	RunTestSession: vi.fn(() => Promise.resolve()),
@@ -13,7 +21,36 @@ vi.mock("../wailsjs/go/main/App", () => ({
 	ChooseOutputDirectory: vi.fn(() => Promise.resolve("")),
 }));
 
+vi.mock("../wailsjs/runtime/runtime", () => ({
+	WindowSetSize: vi.fn(),
+	WindowSetPosition: vi.fn(),
+	WindowSetAlwaysOnTop: vi.fn(),
+	WindowGetSize: vi.fn(() => Promise.resolve({ w: 800, h: 600 })),
+	WindowGetPosition: vi.fn(() => Promise.resolve({ x: 100, y: 100 })),
+	ScreenGetAll: vi.fn(() =>
+		Promise.resolve([
+			{
+				isCurrent: true,
+				isPrimary: true,
+				width: 1920,
+				height: 1080,
+			},
+		]),
+	),
+}));
+
 import App from "./App";
+
+async function selectRegion(user: ReturnType<typeof userEvent.setup>) {
+	await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+	const overlay = await screen.findByRole("dialog");
+	fireEvent.mouseDown(overlay, { screenX: 10, screenY: 20 });
+	fireEvent.mouseMove(overlay, { screenX: 110, screenY: 70 });
+	fireEvent.mouseUp(overlay, { screenX: 110, screenY: 70 });
+	await waitFor(() => {
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+}
 
 beforeEach(() => {
 	vi.mocked(RunTestSession).mockClear();
@@ -21,6 +58,23 @@ beforeEach(() => {
 	vi.mocked(DefaultOutputFileName)
 		.mockClear()
 		.mockResolvedValue("pasha-2026-06-28_15-30");
+	vi.mocked(WindowSetSize).mockClear();
+	vi.mocked(WindowSetPosition).mockClear();
+	vi.mocked(WindowSetAlwaysOnTop).mockClear();
+	vi.mocked(WindowGetSize).mockClear().mockResolvedValue({ w: 800, h: 600 });
+	vi.mocked(WindowGetPosition)
+		.mockClear()
+		.mockResolvedValue({ x: 100, y: 100 });
+	vi.mocked(ScreenGetAll)
+		.mockClear()
+		.mockResolvedValue([
+			{
+				isCurrent: true,
+				isPrimary: true,
+				width: 1920,
+				height: 1080,
+			},
+		]);
 });
 
 describe("App", () => {
@@ -40,6 +94,8 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
 		await screen.findByText("/tmp/out");
+
+		await selectRegion(user);
 
 		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
 
@@ -144,6 +200,81 @@ describe("App", () => {
 		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
 	});
 
+	it("renders a 範囲選択 (region select) button", () => {
+		render(<App />);
+		expect(
+			screen.getByRole("button", { name: /範囲選択/ }),
+		).toBeInTheDocument();
+	});
+
+	it("opens a fullscreen overlay and resizes the window when 範囲選択 is clicked", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+
+		expect(await screen.findByRole("dialog")).toBeInTheDocument();
+		await waitFor(() => {
+			expect(WindowSetAlwaysOnTop).toHaveBeenCalledWith(true);
+			expect(WindowSetPosition).toHaveBeenCalledWith(0, 0);
+			expect(WindowSetSize).toHaveBeenCalledWith(1920, 1080);
+		});
+	});
+
+	it("closes the overlay and restores the window after drag-selecting a region", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		const overlay = await screen.findByRole("dialog");
+
+		fireEvent.mouseDown(overlay, { screenX: 100, screenY: 200 });
+		fireEvent.mouseMove(overlay, { screenX: 300, screenY: 500 });
+		fireEvent.mouseUp(overlay, { screenX: 300, screenY: 500 });
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		});
+		expect(WindowSetAlwaysOnTop).toHaveBeenLastCalledWith(false);
+		expect(WindowSetPosition).toHaveBeenLastCalledWith(100, 100);
+		expect(WindowSetSize).toHaveBeenLastCalledWith(800, 600);
+	});
+
+	it("cancels region selection when Escape is pressed", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await screen.findByRole("dialog");
+
+		await user.keyboard("{Escape}");
+
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		});
+		expect(WindowSetAlwaysOnTop).toHaveBeenLastCalledWith(false);
+		expect(WindowSetPosition).toHaveBeenLastCalledWith(100, 100);
+		expect(WindowSetSize).toHaveBeenLastCalledWith(800, 600);
+	});
+
+	it("keeps the start button disabled until a capture region is selected", async () => {
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
+		const user = userEvent.setup();
+		render(<App />);
+
+		await waitFor(() => {
+			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
+			expect(input.value).toBe("pasha-2026-06-28_15-30");
+		});
+
+		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
+		await screen.findByText("/tmp/out");
+
+		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+	});
+
 	it("passes all inputs as a params object to RunTestSession", async () => {
 		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
 		const user = userEvent.setup();
@@ -168,6 +299,8 @@ describe("App", () => {
 		await user.clear(fileNameInput);
 		await user.type(fileNameInput, "custom-name");
 
+		await selectRegion(user);
+
 		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
 
 		expect(RunTestSession).toHaveBeenCalledWith({
@@ -175,6 +308,72 @@ describe("App", () => {
 			stepIntervalSeconds: 2.5,
 			outputDir: "/tmp/out",
 			outputFileName: "custom-name",
+			captureRegion: { x: 10, y: 20, width: 100, height: 50 },
 		});
+	});
+
+	it("overwrites the previously selected region on re-selection", async () => {
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
+		const user = userEvent.setup();
+		render(<App />);
+		await waitFor(() => {
+			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
+			expect(input.value).toBe("pasha-2026-06-28_15-30");
+		});
+		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
+		await screen.findByText("/tmp/out");
+
+		await selectRegion(user);
+
+		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		const overlay = await screen.findByRole("dialog");
+		fireEvent.mouseDown(overlay, { screenX: 500, screenY: 600 });
+		fireEvent.mouseUp(overlay, { screenX: 700, screenY: 900 });
+		await waitFor(() => {
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		});
+
+		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+
+		expect(RunTestSession).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				captureRegion: { x: 500, y: 600, width: 200, height: 300 },
+			}),
+		);
+	});
+
+	it("draws a rubber-band rectangle while dragging inside the overlay", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		const overlay = await screen.findByRole("dialog");
+
+		fireEvent.mouseDown(overlay, {
+			screenX: 100,
+			screenY: 200,
+			clientX: 100,
+			clientY: 200,
+		});
+		fireEvent.mouseMove(overlay, {
+			screenX: 300,
+			screenY: 500,
+			clientX: 300,
+			clientY: 500,
+		});
+
+		const rubberBand = overlay.querySelector(".region-rubber-band");
+		expect(rubberBand).not.toBeNull();
+	});
+
+	it("shows a region-selected indicator after a region has been picked", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		expect(screen.queryByText(/範囲指定済み/)).not.toBeInTheDocument();
+
+		await selectRegion(user);
+
+		expect(await screen.findByText(/範囲指定済み/)).toBeInTheDocument();
 	});
 });

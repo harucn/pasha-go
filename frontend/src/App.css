@@ -57,3 +57,24 @@
 	border: none;
 	background-color: rgba(255, 255, 255, 1);
 }
+
+.region-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.35);
+	cursor: crosshair;
+	z-index: 9999;
+}
+
+.region-rubber-band {
+	position: absolute;
+	border: 2px solid #4dc4ff;
+	background: rgba(77, 196, 255, 0.15);
+	pointer-events: none;
+}
+
+.region-indicator {
+	margin-left: 10px;
+	font-size: 0.85em;
+	color: #cfd9df;
+}
