@@ -1,6 +1,12 @@
 import logo from "./assets/images/logo-universal.png";
 import "./App.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
@@ -36,10 +42,58 @@ function App() {
 	const [outputDir, setOutputDir] = useState("");
 	const [selectingRegion, setSelectingRegion] = useState(false);
 	const [region, setRegion] = useState<CaptureRegion | null>(null);
+	const [clickPoint, setClickPoint] = useState<{ x: number; y: number } | null>(
+		null,
+	);
+	const [markerPos, setMarkerPos] = useState({
+		x: REGION_FRAME_WIDTH / 2,
+		y: REGION_FRAME_HEIGHT / 2,
+	});
+	const dragStartRef = useRef<{
+		startX: number;
+		startY: number;
+		markerX: number;
+		markerY: number;
+	} | null>(null);
 	const originalWindowRef = useRef<{
 		size: { w: number; h: number };
 		pos: { x: number; y: number };
 	} | null>(null);
+
+	const handleMarkerPointerDown = useCallback(
+		(e: ReactPointerEvent<HTMLButtonElement>) => {
+			dragStartRef.current = {
+				startX: e.clientX,
+				startY: e.clientY,
+				markerX: markerPos.x,
+				markerY: markerPos.y,
+			};
+			e.currentTarget.setPointerCapture?.(e.pointerId);
+		},
+		[markerPos.x, markerPos.y],
+	);
+
+	const handleMarkerPointerMove = useCallback(
+		(e: ReactPointerEvent<HTMLButtonElement>) => {
+			const start = dragStartRef.current;
+			if (!start) return;
+			setMarkerPos({
+				x: start.markerX + (e.clientX - start.startX),
+				y: start.markerY + (e.clientY - start.startY),
+			});
+		},
+		[],
+	);
+
+	const handleMarkerPointerUp = useCallback(
+		(e: ReactPointerEvent<HTMLButtonElement>) => {
+			dragStartRef.current = null;
+			if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+				e.currentTarget.releasePointerCapture(e.pointerId);
+			}
+		},
+		[],
+	);
 
 	const restoreWindow = useCallback(() => {
 		const orig = originalWindowRef.current;
@@ -61,9 +115,7 @@ function App() {
 	useEffect(() => {
 		if (!selectingRegion) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				cancelRegionSelection();
-			}
+			if (e.key === "Escape") cancelRegionSelection();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -93,6 +145,11 @@ function App() {
 		// WindowGetPosition + devicePixelRatio breaks on multi-display:
 		// Wails returns *screen-local* coords, so a window on a secondary
 		// display looks like the same offset on the primary display.
+		//
+		// The advance click point is derived from the marker's position
+		// inside the transparent frame. Because the frame fills the whole
+		// (frameless) window and CSS pixels equal points on macOS, the
+		// screen-space click point is simply region.min + marker offset.
 		try {
 			const region = await GetSelectedRegion();
 			setRegion({
@@ -100,6 +157,10 @@ function App() {
 				y: region.y,
 				width: region.width,
 				height: region.height,
+			});
+			setClickPoint({
+				x: region.x + Math.round(markerPos.x),
+				y: region.y + Math.round(markerPos.y),
 			});
 		} catch (e) {
 			setStatus(`Failed to read window rect: ${String(e)}`);
@@ -120,7 +181,7 @@ function App() {
 	const outputsValid = outputDir !== "" && outputFileName.trim() !== "";
 
 	async function runTestSession() {
-		if (!region) return;
+		if (!region || !clickPoint) return;
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
@@ -131,6 +192,7 @@ function App() {
 					outputDir,
 					outputFileName: outputFileName.trim(),
 					captureRegion: region,
+					advanceClickPoint: clickPoint,
 				}),
 			);
 			setStatus(`Done. Check ${outputDir}/${outputFileName.trim()}.pdf`);
@@ -195,6 +257,11 @@ function App() {
 								? `範囲指定済み (${region.x},${region.y}) ${region.width}×${region.height}`
 								: "(未指定)"}
 						</span>
+						<span className="click-point-indicator">
+							{clickPoint
+								? `クリック位置指定済み (${clickPoint.x},${clickPoint.y})`
+								: ""}
+						</span>
 						<button
 							type="button"
 							className="btn"
@@ -204,7 +271,8 @@ function App() {
 								!repeatCountValid ||
 								!stepIntervalValid ||
 								!outputsValid ||
-								!region
+								!region ||
+								!clickPoint
 							}
 						>
 							テスト撮影
@@ -218,9 +286,18 @@ function App() {
 					aria-label="Capture Region selection"
 					className="region-frame"
 				>
+					<button
+						type="button"
+						aria-label="クリック位置マーカー"
+						className="click-point-marker"
+						style={{ left: `${markerPos.x}px`, top: `${markerPos.y}px` }}
+						onPointerDown={handleMarkerPointerDown}
+						onPointerMove={handleMarkerPointerMove}
+						onPointerUp={handleMarkerPointerUp}
+					/>
 					<div className="region-frame-toolbar">
 						<span className="region-frame-hint">
-							この窓の範囲をキャプチャします。窓を移動・リサイズして位置を合わせてください。
+							この窓の範囲をキャプチャします。窓を移動・リサイズして位置を合わせてください。マーカーをドラッグしてクリック位置を決めてください。
 						</span>
 						<button
 							type="button"

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # 06: Advance Click Point 選択 UI
 
@@ -14,41 +14,34 @@ Status: ready-for-agent
 
 #05 では当初「全画面半透明オーバーレイでドラッグ選択」実装を書いたが、UX 上の問題（別ウィンドウ内しか選べない・選択箇所が見えない等）から捨て、**「透過ウィンドウ自体を範囲として使う」方式**にピボットした（コミット `cada8d8`）。#06 も同じ思想で設計する。
 
-### 実装オプション（実装前に選ぶ）
+### 採用 UX: In-frame draggable marker（範囲選択と一括指定）
 
-以下 3 案から選択する。**A を推奨**。
+実装 UX は当初 A/B/C の 3 案を検討したが、実装中のフィードバックで **D. 範囲選択の透過フレーム内にドラッグ可能なマーカーを置く方式** に確定した（`.copilot/session-state/1481c6bf-.../checkpoints/` 参照）。
 
-**A. window-as-cursor（推奨）**
-- 「クリック位置選択」ボタン押下で、透過な小さいウィンドウ（例：40×40 pt、十字マーク表示）に切り替わる。
-- ユーザーはそのウィンドウをドラッグして目的の点へ移動 →「確定」ボタンで確定。
-- 確定位置 = ウィンドウの中心（Screen Space の点、`internal/appwindow` で取得）。
-- **利点**：#05 の `beginRegionSelection` / `restoreWindow` と実装機構を共有できる。座標系変換も同じパスに乗る。
-
-**B. オーバーレイ復活**
-- 全画面透過ウィンドウを新規に開き、その上でクリックを受け付ける。
-- **利点**：直感的で「クリックしたら決定」の1ステップで済む。
-- **欠点**：#05 で捨てた実装を再導入することになり、実装コストが増える。透過ウィンドウの座標系は Wails の別ウィンドウ扱いになり、`internal/appwindow` の拡張が必要。
-
-**C. Skip：region 中心固定**
-- 独立した Click Point 選択 UI を作らず、`Capture Region` の中心を Advance Click Point として使う（現状の実装のまま）。
-- **利点**：追加実装ゼロで既に動いている。
-- **欠点**：AC「1点をユーザーが指定できる」を諦める（PRD 上の妥協）。
+- 「範囲選択」ボタンで従来通り透過フレーム（デフォルト 500×400 pt）に切り替わる。
+- **フレーム内にドラッグ可能なマーカー（円形＋十字）** が表示される。初期位置はフレーム中央。
+- ユーザーはフレームを移動・リサイズして範囲を合わせつつ、マーカーをドラッグしてクリック位置を決める。
+- 「確定」で **範囲とクリック位置を同時にコミット** する。フロントで
+  - `region = GetSelectedRegion()`（既存 cgo helper）
+  - `clickPoint = { x: region.x + markerX, y: region.y + markerY }`
+    （フレームは Frameless で 100vw/100vh・macOS では CSS px = points なので単純加算）
+- 別モードのクリック位置選択ボタン・ダイアログは廃止。
 
 ### 座標系
 
 - Advance Click Point は **Screen Space**（プライマリ左上原点、logical points）で扱う。詳細は `docs/adr/0003-canonical-screen-coordinate-space.md`。
-- 案 A を採る場合、`internal/appwindow.GetMainWindowRect()` の返す矩形の中心を Point として使えばよい。新たな座標系変換は不要。
+- `internal/appwindow.GetMainWindowRect()` が Screen Space の region を返し、フロントで markerPos を加算するだけで clickPoint が得られる。新たな座標系変換は不要。
 - `internal/clicker` の `robotgo.Move(x, y)` は macOS では `CGEventPost` を経由し、同じ Screen Space（top-left global points）を要求するため、Screen Space の値をそのまま渡してよい。
 
 ## Acceptance criteria
 
-- [ ] 「クリック位置選択」ボタンを押すと（A 案）バーが小さな透過ターゲットに切り替わる／（B 案）全画面透過オーバーレイが出る／（C 案）該当なし
-- [ ] （A/B 案）確定操作でバー上に「クリック位置指定済み」表示が出る
-- [ ] （A/B 案）Esc でキャンセルすると元の状態に戻る
-- [ ] 確定した座標で開始すると、各ステップでその座標がクリックされる
-- [ ] クリック位置未指定の状態では開始ボタンが押せない（C 案では「Region 選択済み」を代替条件にする）
-- [ ] 再選択で上書きできる（A/B 案）
-- [ ] **マルチディスプレイ確認**：セカンダリディスプレイ上でクリック位置を指定 → 実際にそのディスプレイの当該位置がクリックされることを HITL で確認（robotgo の multi-display 挙動を実機で検証）
+- [x] 範囲選択ダイアログ内にクリック位置マーカーが表示される
+- [x] マーカーをドラッグしてフレーム内で移動できる
+- [x] 確定操作で「範囲指定済み」と「クリック位置指定済み (x,y)」の両方が表示される
+- [x] Esc / キャンセルで元の状態に戻り、範囲もクリック位置も保存されない
+- [x] 範囲もしくはクリック位置が未指定の状態では開始ボタンが押せない（実際は同時にセットされる）
+- [x] 再選択で上書きできる（マーカーは毎回中央にリセット）
+- [x] **マルチディスプレイ確認**：セカンダリディスプレイ上でクリック位置を指定 → 実際にそのディスプレイの当該位置がクリックされることを HITL で確認（robotgo の multi-display 挙動を実機で検証）
 
 ## Blocked by
 
@@ -57,5 +50,6 @@ Status: ready-for-agent
 
 ## Design notes
 
-- 案 A を選んだ場合、`internal/appwindow` に点変換ヘルパー（例：`GetMainWindowCenterPoint() image.Point`）を追加すると呼び出し側がシンプル。既存の `GetMainWindowRect()` を呼んで中心を計算するのでも十分。
+- Go 側は既存の `GetSelectedRegion` のみを使う。当初検討した `GetSelectedClickPoint` は不要になった。
+- マーカー位置はフロントの React state（CSS px = points on macOS）。ドラッグは pointer capture + delta 方式で jsdom テストも動く。
 - robotgo の macOS 実装は歴史的にマルチディスプレイでの挙動が版によって差異があるため、AC の HITL 検証項目を必ず通す。

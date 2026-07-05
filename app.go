@@ -90,6 +90,13 @@ type CaptureRegionInput struct {
 	Height int `json:"height"`
 }
 
+// ClickPointInput carries the user-selected Advance Click Point in
+// Screen Space (see docs/adr/0003-canonical-screen-coordinate-space.md).
+type ClickPointInput struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
 // GetSelectedRegion returns the current main-window rectangle in the
 // coordinate space that the underlying capture library expects.
 //
@@ -121,12 +128,13 @@ type TestSessionParams struct {
 	OutputDir           string             `json:"outputDir"`
 	OutputFileName      string             `json:"outputFileName"`
 	CaptureRegion       CaptureRegionInput `json:"captureRegion"`
+	AdvanceClickPoint   ClickPointInput    `json:"advanceClickPoint"`
 }
 
 // RunTestSession translates frontend inputs into a Capture Session Plan
-// and delegates to the Runner. Advance Click Point defaults to the
-// centre of the selected Capture Region until issue #06 supplies a
-// user-picked value.
+// and delegates to the Runner. Both Capture Region and Advance Click
+// Point are supplied by the user via #05 / #06 UI flows and arrive in
+// Screen Space (primary top-left global points).
 func (a *App) RunTestSession(params TestSessionParams) error {
 	region := image.Rect(
 		params.CaptureRegion.X,
@@ -134,10 +142,7 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 		params.CaptureRegion.X+params.CaptureRegion.Width,
 		params.CaptureRegion.Y+params.CaptureRegion.Height,
 	)
-	center := image.Pt(
-		region.Min.X+region.Dx()/2,
-		region.Min.Y+region.Dy()/2,
-	)
+	clickPoint := image.Pt(params.AdvanceClickPoint.X, params.AdvanceClickPoint.Y)
 
 	ctx := a.ctx
 	if ctx == nil {
@@ -148,7 +153,7 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 		RepeatCount:         params.RepeatCount,
 		StepIntervalSeconds: params.StepIntervalSeconds,
 		CaptureRegion:       region,
-		AdvanceClickPoint:   center,
+		AdvanceClickPoint:   clickPoint,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
 	})
