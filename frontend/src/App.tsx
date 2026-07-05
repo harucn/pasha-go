@@ -6,6 +6,7 @@ import {
 	DefaultOutputFileName,
 	RunTestSession,
 } from "../wailsjs/go/main/App";
+import { main } from "../wailsjs/go/models";
 import {
 	ScreenGetAll,
 	WindowGetPosition,
@@ -146,13 +147,15 @@ function App() {
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
-			await RunTestSession({
-				repeatCount: parsedRepeatCount,
-				stepIntervalSeconds: parsedStepInterval,
-				outputDir,
-				outputFileName: outputFileName.trim(),
-				captureRegion: region,
-			});
+			await RunTestSession(
+				new main.TestSessionParams({
+					repeatCount: parsedRepeatCount,
+					stepIntervalSeconds: parsedStepInterval,
+					outputDir,
+					outputFileName: outputFileName.trim(),
+					captureRegion: region,
+				}),
+			);
 			setStatus(`Done. Check ${outputDir}/${outputFileName.trim()}.pdf`);
 		} catch (e) {
 			setStatus(`Failed: ${String(e)}`);
