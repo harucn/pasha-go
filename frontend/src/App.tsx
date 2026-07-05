@@ -8,10 +8,8 @@ import {
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 import {
-	ScreenGetAll,
 	WindowGetPosition,
 	WindowGetSize,
-	WindowSetAlwaysOnTop,
 	WindowSetPosition,
 	WindowSetSize,
 } from "../wailsjs/runtime/runtime";
@@ -22,6 +20,9 @@ type CaptureRegion = {
 	width: number;
 	height: number;
 };
+
+const REGION_FRAME_WIDTH = 500;
+const REGION_FRAME_HEIGHT = 400;
 
 function App() {
 	const [status, setStatus] = useState(
@@ -34,16 +35,6 @@ function App() {
 	const [outputDir, setOutputDir] = useState("");
 	const [selectingRegion, setSelectingRegion] = useState(false);
 	const [region, setRegion] = useState<CaptureRegion | null>(null);
-	const [rubberBand, setRubberBand] = useState<{
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	} | null>(null);
-	const dragStartRef = useRef<{
-		screen: { x: number; y: number };
-		client: { x: number; y: number };
-	} | null>(null);
 	const originalWindowRef = useRef<{
 		size: { w: number; h: number };
 		pos: { x: number; y: number };
@@ -51,12 +42,16 @@ function App() {
 
 	const restoreWindow = useCallback(() => {
 		const orig = originalWindowRef.current;
-		WindowSetAlwaysOnTop(false);
 		if (orig) {
 			WindowSetPosition(orig.pos.x, orig.pos.y);
 			WindowSetSize(orig.size.w, orig.size.h);
 		}
 	}, []);
+
+	const cancelRegionSelection = useCallback(() => {
+		restoreWindow();
+		setSelectingRegion(false);
+	}, [restoreWindow]);
 
 	useEffect(() => {
 		DefaultOutputFileName().then(setOutputFileName);
@@ -66,15 +61,12 @@ function App() {
 		if (!selectingRegion) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
-				dragStartRef.current = null;
-				setRubberBand(null);
-				restoreWindow();
-				setSelectingRegion(false);
+				cancelRegionSelection();
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [selectingRegion, restoreWindow]);
+	}, [selectingRegion, cancelRegionSelection]);
 
 	async function chooseFolder() {
 		const chosen = await ChooseOutputDirectory();
@@ -84,50 +76,27 @@ function App() {
 	}
 
 	async function beginRegionSelection() {
-		const [size, pos, screens] = await Promise.all([
+		const [size, pos] = await Promise.all([
 			WindowGetSize(),
 			WindowGetPosition(),
-			ScreenGetAll(),
 		]);
 		originalWindowRef.current = { size, pos };
-		const primary = screens.find((s) => s.isPrimary) ?? screens[0];
-		WindowSetAlwaysOnTop(true);
-		WindowSetPosition(0, 0);
-		WindowSetSize(primary.width, primary.height);
+		WindowSetSize(REGION_FRAME_WIDTH, REGION_FRAME_HEIGHT);
 		setSelectingRegion(true);
 	}
 
-	function handleOverlayMouseDown(event: React.MouseEvent<HTMLDivElement>) {
-		dragStartRef.current = {
-			screen: { x: event.screenX, y: event.screenY },
-			client: { x: event.clientX, y: event.clientY },
-		};
-		setRubberBand({ x: event.clientX, y: event.clientY, width: 0, height: 0 });
-	}
-
-	function handleOverlayMouseMove(event: React.MouseEvent<HTMLDivElement>) {
-		const start = dragStartRef.current;
-		if (!start) return;
-		setRubberBand({
-			x: Math.min(start.client.x, event.clientX),
-			y: Math.min(start.client.y, event.clientY),
-			width: Math.abs(event.clientX - start.client.x),
-			height: Math.abs(event.clientY - start.client.y),
+	async function confirmRegionSelection() {
+		const [pos, size] = await Promise.all([
+			WindowGetPosition(),
+			WindowGetSize(),
+		]);
+		const dpr = window.devicePixelRatio || 1;
+		setRegion({
+			x: Math.round(pos.x * dpr),
+			y: Math.round(pos.y * dpr),
+			width: Math.round(size.w * dpr),
+			height: Math.round(size.h * dpr),
 		});
-	}
-
-	function handleOverlayMouseUp(event: React.MouseEvent<HTMLDivElement>) {
-		const start = dragStartRef.current;
-		if (!start) return;
-		const x = Math.min(start.screen.x, event.screenX);
-		const y = Math.min(start.screen.y, event.screenY);
-		const width = Math.abs(event.screenX - start.screen.x);
-		const height = Math.abs(event.screenY - start.screen.y);
-		dragStartRef.current = null;
-		setRubberBand(null);
-		if (width > 0 && height > 0) {
-			setRegion({ x, y, width, height });
-		}
 		restoreWindow();
 		setSelectingRegion(false);
 	}
@@ -239,29 +208,27 @@ function App() {
 				<div
 					role="dialog"
 					aria-label="Capture Region selection"
-					className="region-overlay"
-					onMouseDown={handleOverlayMouseDown}
-					onMouseMove={handleOverlayMouseMove}
-					onMouseUp={handleOverlayMouseUp}
+					className="region-frame"
 				>
-					<div className="region-hint">
-						ドラッグで範囲を選択 / Esc でキャンセル
-					</div>
-					{rubberBand && (
-						<div
-							className="region-rubber-band"
-							style={{
-								left: rubberBand.x,
-								top: rubberBand.y,
-								width: rubberBand.width,
-								height: rubberBand.height,
-							}}
+					<div className="region-frame-toolbar">
+						<span className="region-frame-hint">
+							この窓の範囲をキャプチャします。窓を移動・リサイズして位置を合わせてください。
+						</span>
+						<button
+							type="button"
+							className="btn btn-primary"
+							onClick={confirmRegionSelection}
 						>
-							<span className="region-rubber-band-label">
-								{rubberBand.width} × {rubberBand.height}
-							</span>
-						</div>
-					)}
+							確定
+						</button>
+						<button
+							type="button"
+							className="btn"
+							onClick={cancelRegionSelection}
+						>
+							キャンセル
+						</button>
+					</div>
 				</div>
 			)}
 		</div>
