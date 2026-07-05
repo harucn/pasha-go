@@ -26,6 +26,8 @@ ADR-0002 に従い、Wails のメインウィンドウを**コンパクトな常
 - [ ] 他のアプリ（Preview, Finder 等）を前面化してもバーは隠れない
 - [ ] 設定が1つでも欠けていると開始ボタンが disabled
 - [ ] 全て揃うと開始ボタンが enabled になる
+- [ ] **範囲選択との協調**：`Frameless: true` + `AlwaysOnTop: true` の状態でも、#05 の `beginRegionSelection` によるバー → 大きな透過フレームへのリサイズ、および `restoreWindow` による元のバーサイズ／位置への復元が正しく動作する（HITL 検証）
+- [ ] **座標系ドキュメントとの整合**：範囲選択後に取得される Capture Region が Screen Space（`docs/adr/0003-canonical-screen-coordinate-space.md`）で保持されている（既に #05 で担保されているが、フローティングバー化後も回帰していないことを確認）
 
 ## Blocked by
 

@@ -35,3 +35,7 @@ _Avoid_: 出力ファイル、結果PDF
 **Capture Session Plan**:
 Capture Session を開始するために確定している入力一式：Repeat Count・Step Interval・Capture Region・Advance Click Point・Output Document の保存先とファイル名。ユーザーが「開始」を押した瞬間にスナップショットされ、以降のセッション内では変更されない。
 _Avoid_: 設定、パラメータ、リクエスト
+
+**Screen Space**:
+pasha-go 内で画面上の座標を扱うときの唯一の共通座標系。プライマリディスプレイの左上を原点 (0, 0) とし、x を右、y を下向き、単位は logical points。マルチディスプレイの負値やプライマリ幅超えも正当な Screen Space 値として扱う。詳細は `docs/adr/0003-canonical-screen-coordinate-space.md`。
+_Avoid_: 画面座標（曖昧なので使わない）、pixel 座標
