@@ -47,6 +47,9 @@ func (p Plan) validate() error {
 	if strings.TrimSpace(p.OutputFileName) == "" {
 		return fmt.Errorf("output file name must not be empty")
 	}
+	if p.CaptureRegion.Dx() <= 0 || p.CaptureRegion.Dy() <= 0 {
+		return fmt.Errorf("capture region must be non-empty, got %v", p.CaptureRegion)
+	}
 	return nil
 }
 

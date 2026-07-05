@@ -10,6 +10,10 @@ export function DefaultOutputFileName() {
   return window['go']['main']['App']['DefaultOutputFileName']();
 }
 
+export function GetSelectedRegion() {
+  return window['go']['main']['App']['GetSelectedRegion']();
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }

@@ -6,33 +6,45 @@ import (
 	"image"
 	"time"
 
-	"github.com/kbinani/screenshot"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"pasha-go/internal/appwindow"
 	"pasha-go/internal/capturerunner"
 	"pasha-go/internal/clicker"
 	"pasha-go/internal/clock"
 	"pasha-go/internal/screener"
 )
 
+// sessionRunner is the seam through which App delegates Capture Session
+// assembly. In production this is *capturerunner.Runner; tests can
+// substitute a fake.
+type sessionRunner interface {
+	Run(ctx context.Context, p capturerunner.Plan) error
+}
+
 // App is the Wails-bound adapter. It holds the runtime context and a
 // pre-wired Runner; every method delegates its work behind the seam so
 // the adapter itself stays thin.
 type App struct {
 	ctx    context.Context
-	runner *capturerunner.Runner
+	runner sessionRunner
 }
 
 // NewApp constructs the App together with a Runner wired to the real
 // desktop collaborators.
 func NewApp() *App {
-	runner := capturerunner.New(
+	return newAppWithRunner(capturerunner.New(
 		screener.New(),
 		clicker.New(),
 		clock.New(),
 		capturerunner.DefaultPdfWriterFactory,
-	)
-	return &App{runner: runner}
+	))
+}
+
+// newAppWithRunner injects the Runner. Kept package-private so tests
+// can substitute a fake without exposing the seam publicly.
+func newAppWithRunner(r sessionRunner) *App {
+	return &App{runner: r}
 }
 
 // startup is called when the app starts. The context is saved
@@ -67,23 +79,65 @@ func (a *App) ChooseOutputDirectory() (string, error) {
 	})
 }
 
+// CaptureRegionInput carries the user-selected Capture Region in
+// screen coordinates. X/Y is the top-left corner, Width/Height is the
+// size. Sent from the frontend after the drag-selection overlay
+// completes.
+type CaptureRegionInput struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// GetSelectedRegion returns the current main-window rectangle in the
+// coordinate space that the underlying capture library expects.
+//
+// This exists because Wails' own WindowGetPosition returns *screen-local*
+// coordinates on macOS (relative to the display the window happens to be
+// on), which breaks kbinani/screenshot.Capture on multi-display setups.
+// The cgo helper in internal/appwindow performs the correct conversion
+// via NSApp.mainWindow.frame + CGDisplayBounds(CGMainDisplayID()).
+func (a *App) GetSelectedRegion() (CaptureRegionInput, error) {
+	rect, err := appwindow.GetMainWindowRect()
+	if err != nil {
+		return CaptureRegionInput{}, err
+	}
+	region := CaptureRegionInput{
+		X:      rect.Min.X,
+		Y:      rect.Min.Y,
+		Width:  rect.Dx(),
+		Height: rect.Dy(),
+	}
+	return region, nil
+}
+
 // TestSessionParams bundles the frontend-supplied Capture Session inputs.
 // Wails auto-generates a matching TypeScript class so the frontend can
 // construct this object directly.
 type TestSessionParams struct {
-	RepeatCount         int     `json:"repeatCount"`
-	StepIntervalSeconds float64 `json:"stepIntervalSeconds"`
-	OutputDir           string  `json:"outputDir"`
-	OutputFileName      string  `json:"outputFileName"`
+	RepeatCount         int                `json:"repeatCount"`
+	StepIntervalSeconds float64            `json:"stepIntervalSeconds"`
+	OutputDir           string             `json:"outputDir"`
+	OutputFileName      string             `json:"outputFileName"`
+	CaptureRegion       CaptureRegionInput `json:"captureRegion"`
 }
 
-// RunTestSession builds a Capture Session Plan from frontend inputs
-// (using primary-display defaults for Capture Region and Advance Click
-// Point) and delegates to the Runner. All validation, path resolution
-// and session construction live behind the Runner interface.
+// RunTestSession translates frontend inputs into a Capture Session Plan
+// and delegates to the Runner. Advance Click Point defaults to the
+// centre of the selected Capture Region until issue #06 supplies a
+// user-picked value.
 func (a *App) RunTestSession(params TestSessionParams) error {
-	bounds := screenshot.GetDisplayBounds(0)
-	center := image.Pt(bounds.Min.X+bounds.Dx()/2, bounds.Min.Y+bounds.Dy()/2)
+	region := image.Rect(
+		params.CaptureRegion.X,
+		params.CaptureRegion.Y,
+		params.CaptureRegion.X+params.CaptureRegion.Width,
+		params.CaptureRegion.Y+params.CaptureRegion.Height,
+	)
+	center := image.Pt(
+		region.Min.X+region.Dx()/2,
+		region.Min.Y+region.Dy()/2,
+	)
 
 	ctx := a.ctx
 	if ctx == nil {
@@ -93,7 +147,7 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 	return a.runner.Run(ctx, capturerunner.Plan{
 		RepeatCount:         params.RepeatCount,
 		StepIntervalSeconds: params.StepIntervalSeconds,
-		CaptureRegion:       bounds,
+		CaptureRegion:       region,
 		AdvanceClickPoint:   center,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
