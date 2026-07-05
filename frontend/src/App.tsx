@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
+	GetSelectedRegion,
 	RunTestSession,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -86,19 +87,26 @@ function App() {
 	}
 
 	async function confirmRegionSelection() {
-		const [pos, size] = await Promise.all([
-			WindowGetPosition(),
-			WindowGetSize(),
-		]);
-		const dpr = window.devicePixelRatio || 1;
-		setRegion({
-			x: Math.round(pos.x * dpr),
-			y: Math.round(pos.y * dpr),
-			width: Math.round(size.w * dpr),
-			height: Math.round(size.h * dpr),
-		});
-		restoreWindow();
-		setSelectingRegion(false);
+		// The Go side reads the real NSWindow frame via cgo/Cocoa and
+		// converts it to the primary-top-left, points coordinate space
+		// that kbinani/screenshot.Capture expects. Doing this in JS via
+		// WindowGetPosition + devicePixelRatio breaks on multi-display:
+		// Wails returns *screen-local* coords, so a window on a secondary
+		// display looks like the same offset on the primary display.
+		try {
+			const region = await GetSelectedRegion();
+			setRegion({
+				x: region.x,
+				y: region.y,
+				width: region.width,
+				height: region.height,
+			});
+		} catch (e) {
+			setStatus(`Failed to read window rect: ${String(e)}`);
+		} finally {
+			restoreWindow();
+			setSelectingRegion(false);
+		}
 	}
 
 	const parsedRepeatCount = Number.parseInt(repeatCount, 10);

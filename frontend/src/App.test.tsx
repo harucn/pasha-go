@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
+	GetSelectedRegion,
 	RunTestSession,
 } from "../wailsjs/go/main/App";
 import {
@@ -17,6 +18,9 @@ vi.mock("../wailsjs/go/main/App", () => ({
 	RunTestSession: vi.fn(() => Promise.resolve()),
 	DefaultOutputFileName: vi.fn(() => Promise.resolve("pasha-2026-06-28_15-30")),
 	ChooseOutputDirectory: vi.fn(() => Promise.resolve("")),
+	GetSelectedRegion: vi.fn(() =>
+		Promise.resolve({ x: 10, y: 20, width: 100, height: 50 }),
+	),
 }));
 
 vi.mock("../wailsjs/runtime/runtime", () => ({
@@ -36,14 +40,7 @@ async function selectRegion(
 ) {
 	await user.click(screen.getByRole("button", { name: /範囲選択/ }));
 	await screen.findByRole("dialog");
-	vi.mocked(WindowGetPosition).mockResolvedValueOnce({
-		x: region.x,
-		y: region.y,
-	});
-	vi.mocked(WindowGetSize).mockResolvedValueOnce({
-		w: region.width,
-		h: region.height,
-	});
+	vi.mocked(GetSelectedRegion).mockResolvedValueOnce(region);
 	await user.click(screen.getByRole("button", { name: /確定/ }));
 	await waitFor(() => {
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -56,6 +53,9 @@ beforeEach(() => {
 	vi.mocked(DefaultOutputFileName)
 		.mockClear()
 		.mockResolvedValue("pasha-2026-06-28_15-30");
+	vi.mocked(GetSelectedRegion)
+		.mockClear()
+		.mockResolvedValue({ x: 10, y: 20, width: 100, height: 50 });
 	vi.mocked(WindowSetSize).mockClear();
 	vi.mocked(WindowSetPosition).mockClear();
 	vi.mocked(WindowGetSize).mockClear().mockResolvedValue({ w: 800, h: 600 });
@@ -208,15 +208,19 @@ describe("App", () => {
 		});
 	});
 
-	it("records the window geometry as the region when 確定 is clicked and restores the window", async () => {
+	it("records the region from GetSelectedRegion when 確定 is clicked and restores the window", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
 		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
 		await screen.findByRole("dialog");
 
-		vi.mocked(WindowGetPosition).mockResolvedValueOnce({ x: 250, y: 180 });
-		vi.mocked(WindowGetSize).mockResolvedValueOnce({ w: 640, h: 320 });
+		vi.mocked(GetSelectedRegion).mockResolvedValueOnce({
+			x: 250,
+			y: 180,
+			width: 640,
+			height: 320,
+		});
 
 		await user.click(screen.getByRole("button", { name: /確定/ }));
 

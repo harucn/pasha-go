@@ -8,6 +8,7 @@ import (
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"pasha-go/internal/appwindow"
 	"pasha-go/internal/capturerunner"
 	"pasha-go/internal/clicker"
 	"pasha-go/internal/clock"
@@ -87,6 +88,28 @@ type CaptureRegionInput struct {
 	Y      int `json:"y"`
 	Width  int `json:"width"`
 	Height int `json:"height"`
+}
+
+// GetSelectedRegion returns the current main-window rectangle in the
+// coordinate space that the underlying capture library expects.
+//
+// This exists because Wails' own WindowGetPosition returns *screen-local*
+// coordinates on macOS (relative to the display the window happens to be
+// on), which breaks kbinani/screenshot.Capture on multi-display setups.
+// The cgo helper in internal/appwindow performs the correct conversion
+// via NSApp.mainWindow.frame + CGDisplayBounds(CGMainDisplayID()).
+func (a *App) GetSelectedRegion() (CaptureRegionInput, error) {
+	rect, err := appwindow.GetMainWindowRect()
+	if err != nil {
+		return CaptureRegionInput{}, err
+	}
+	region := CaptureRegionInput{
+		X:      rect.Min.X,
+		Y:      rect.Min.Y,
+		Width:  rect.Dx(),
+		Height: rect.Dy(),
+	}
+	return region, nil
 }
 
 // TestSessionParams bundles the frontend-supplied Capture Session inputs.
