@@ -197,6 +197,43 @@ func TestCaptureSession_ContextCancelAborts(t *testing.T) {
 	}
 }
 
+func TestCaptureSession_ProgressCalledPerCompletedStep(t *testing.T) {
+	var got [][2]int
+	cfg := newConfig(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{}, 3)
+	cfg.Progress = func(current, total int) {
+		got = append(got, [2]int{current, total})
+	}
+
+	cs := session.New(cfg)
+	if err := cs.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	want := [][2]int{{1, 3}, {2, 3}, {3, 3}}
+	if len(got) != len(want) {
+		t.Fatalf("Progress calls = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Progress[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestCaptureSession_ProgressNotCalledOnAbortedStep(t *testing.T) {
+	var calls int
+	cfg := newConfig(&fakeScreener{err: errSentinel("boom")}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{}, 3)
+	cfg.Progress = func(int, int) { calls++ }
+
+	cs := session.New(cfg)
+	if err := cs.Start(context.Background()); err == nil {
+		t.Fatal("Start: expected error")
+	}
+	if calls != 0 {
+		t.Errorf("Progress calls = %d, want 0 (step never completed)", calls)
+	}
+}
+
 type errSentinel string
 
 func (e errSentinel) Error() string { return string(e) }

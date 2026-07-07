@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # 08: 進捗表示
 
@@ -16,9 +16,9 @@ CaptureSession が現在何ステップ目を実行中かを、Go→フロント
 
 ## Acceptance criteria
 
-- [ ] 撮影開始後、バー上に「N / M」または進捗が動的に更新される
-- [ ] 完了時に N === M を表示
-- [ ] CaptureSession のテストで progress フックが各ステップ完了時に呼ばれることを検証
+- [x] 撮影開始後、バー上に「N / M」または進捗が動的に更新される
+- [x] 完了時に N === M を表示
+- [x] CaptureSession のテストで progress フックが各ステップ完了時に呼ばれることを検証
 
 ## Blocked by
 

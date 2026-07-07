@@ -83,8 +83,10 @@ func New(scr session.Screener, clk session.Clicker, clock session.Clock, newPdf 
 }
 
 // Run resolves the Output Document path, builds a PdfWriter, and starts
-// a Capture Session. It returns the first error encountered.
-func (r *Runner) Run(ctx context.Context, p Plan) error {
+// a Capture Session. onProgress, if non-nil, is invoked after each Capture
+// Step completes with (completedSteps, totalSteps). It returns the first
+// error encountered.
+func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int)) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
@@ -109,6 +111,7 @@ func (r *Runner) Run(ctx context.Context, p Plan) error {
 		Clicker:           r.clicker,
 		PdfWriter:         pdf,
 		Clock:             r.clock,
+		Progress:          onProgress,
 	})
 	return cs.Start(ctx)
 }

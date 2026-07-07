@@ -14,6 +14,7 @@ import {
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 import {
+	EventsOn,
 	WindowGetPosition,
 	WindowGetSize,
 	WindowSetMaxSize,
@@ -115,6 +116,19 @@ function App() {
 
 	useEffect(() => {
 		DefaultOutputFileName().then(setOutputFileName);
+	}, []);
+
+	// Subscribe to Capture Session progress ticks emitted from Go
+	// (app.go emitProgress). The bar is too narrow for a progress bar,
+	// so we render "N / M ステップ完了" as text (issue #08).
+	useEffect(() => {
+		const off = EventsOn("session:progress", (data: unknown) => {
+			const p = data as { current?: number; total?: number };
+			if (typeof p?.current === "number" && typeof p?.total === "number") {
+				setStatus(`${p.current} / ${p.total} ステップ完了`);
+			}
+		});
+		return off;
 	}, []);
 
 	useEffect(() => {

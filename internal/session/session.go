@@ -41,6 +41,11 @@ type Config struct {
 	Clicker   Clicker
 	PdfWriter PdfWriter
 	Clock     Clock
+
+	// Progress, if non-nil, is called after each Capture Step completes
+	// with the number of completed steps and the total (RepeatCount). It
+	// is not called for a step that aborts partway (error or cancellation).
+	Progress func(current, total int)
 }
 
 type CaptureSession struct {
@@ -86,6 +91,10 @@ func (s *CaptureSession) Start(ctx context.Context) (err error) {
 				return err
 			}
 			return err
+		}
+
+		if s.cfg.Progress != nil {
+			s.cfg.Progress(i+1, s.cfg.RepeatCount)
 		}
 	}
 	return nil

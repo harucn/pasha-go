@@ -14,6 +14,7 @@ import {
 	RunTestSession,
 } from "../wailsjs/go/main/App";
 import {
+	EventsOn,
 	WindowGetPosition,
 	WindowGetSize,
 	WindowSetMaxSize,
@@ -38,6 +39,7 @@ vi.mock("../wailsjs/runtime/runtime", () => ({
 	WindowSetMaxSize: vi.fn(),
 	WindowGetSize: vi.fn(() => Promise.resolve({ w: 800, h: 600 })),
 	WindowGetPosition: vi.fn(() => Promise.resolve({ x: 100, y: 100 })),
+	EventsOn: vi.fn(() => () => {}),
 }));
 
 import App from "./App";
@@ -101,6 +103,9 @@ beforeEach(() => {
 	vi.mocked(WindowGetPosition)
 		.mockClear()
 		.mockResolvedValue({ x: 100, y: 100 });
+	vi.mocked(EventsOn)
+		.mockClear()
+		.mockReturnValue(() => {});
 });
 
 describe("App", () => {
@@ -509,6 +514,26 @@ describe("App", () => {
 	it("does not render the legacy logo image (bar has no room for it)", () => {
 		render(<App />);
 		expect(screen.queryByAltText(/logo/i)).not.toBeInTheDocument();
+	});
+
+	it("shows live progress from session:progress events on the bar", async () => {
+		let progressHandler: ((data: unknown) => void) | undefined;
+		vi.mocked(EventsOn).mockImplementation((event, handler) => {
+			if (event === "session:progress") {
+				progressHandler = handler as (data: unknown) => void;
+			}
+			return () => {};
+		});
+
+		render(<App />);
+
+		expect(progressHandler).toBeDefined();
+
+		progressHandler?.({ current: 3, total: 10 });
+		expect(await screen.findByText(/3\s*\/\s*10/)).toBeInTheDocument();
+
+		progressHandler?.({ current: 10, total: 10 });
+		expect(await screen.findByText(/10\s*\/\s*10/)).toBeInTheDocument();
 	});
 
 	it("shows a region-selected indicator after a region has been picked", async () => {
