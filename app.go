@@ -19,7 +19,7 @@ import (
 // assembly. In production this is *capturerunner.Runner; tests can
 // substitute a fake.
 type sessionRunner interface {
-	Run(ctx context.Context, p capturerunner.Plan) error
+	Run(ctx context.Context, p capturerunner.Plan, onProgress func(current, total int)) error
 }
 
 // App is the Wails-bound adapter. It holds the runtime context and a
@@ -156,5 +156,26 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 		AdvanceClickPoint:   clickPoint,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
+	}, a.emitProgress)
+}
+
+// SessionProgress is the payload emitted on the "session:progress" event
+// after each Capture Step completes. Wails generates a matching TypeScript
+// type so the frontend can render "Current / Total".
+type SessionProgress struct {
+	Current int `json:"current"`
+	Total   int `json:"total"`
+}
+
+// emitProgress forwards a Capture Session progress tick to the frontend via
+// the Wails runtime. It is a no-op when the runtime context is absent (e.g.
+// in unit tests where startup was never called).
+func (a *App) emitProgress(current, total int) {
+	if a.ctx == nil {
+		return
+	}
+	wailsRuntime.EventsEmit(a.ctx, "session:progress", SessionProgress{
+		Current: current,
+		Total:   total,
 	})
 }

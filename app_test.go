@@ -10,14 +10,16 @@ import (
 )
 
 type fakeRunner struct {
-	called   bool
-	lastPlan capturerunner.Plan
-	err      error
+	called     bool
+	lastPlan   capturerunner.Plan
+	onProgress func(current, total int)
+	err        error
 }
 
-func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan) error {
+func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int)) error {
 	f.called = true
 	f.lastPlan = p
+	f.onProgress = onProgress
 	return f.err
 }
 
@@ -68,6 +70,22 @@ func TestRunTestSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	if got := r.lastPlan.CaptureRegion; got != want {
 		t.Errorf("Plan.CaptureRegion = %v, want %v", got, want)
 	}
+}
+
+func TestRunTestSession_SuppliesProgressCallbackToRunner(t *testing.T) {
+	r := &fakeRunner{}
+	app := newAppWithRunner(r)
+
+	if err := app.RunTestSession(validTestSessionParams()); err != nil {
+		t.Fatalf("RunTestSession: %v", err)
+	}
+
+	if r.onProgress == nil {
+		t.Fatal("Runner.Run received nil onProgress; expected a progress callback")
+	}
+	// The callback must not panic when the app has no runtime context
+	// (as in unit tests, where startup was never called).
+	r.onProgress(1, 10)
 }
 
 func TestRunTestSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {
