@@ -15,8 +15,8 @@ Status: ready-for-agent
   - `HasAccessibility() bool`：CGo 経由で `AXIsProcessTrustedWithOptions()` を呼ぶ。
   - `OpenSettings(kind)`：それぞれの権限ペインの URL を `open` で開く（例：`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`）。
 - `app.go`：`startup` で両権限をチェック、不足があれば `runtime.EventsEmit("permission:missing", {kinds: ["screen-recording", "accessibility"]})` をフロントへ送信。
-- フロント：受信時にダイアログ（モーダル）を表示。各権限ごとに「System Settings を開く」ボタン、「権限再チェック」ボタン。
-- 再チェックは Go 側に都度問い合わせ、両方 OK になったらダイアログを閉じる。
+- フロント：受信時にダイアログを表示。バーは 940×76 で常時最前面のためモーダルはバー内には収まらない。**#05 の `beginRegionSelection` と同じパターンで、`WindowSetMinSize/MaxSize` を緩めて一時的にウィンドウを拡張**し、その中でダイアログを表示する。各権限ごとに「System Settings を開く」ボタン、「権限再チェック」ボタン。
+- 再チェックは Go 側に都度問い合わせ、両方 OK になったらダイアログを閉じてバーサイズに再ロック。
 
 ## Acceptance criteria
 

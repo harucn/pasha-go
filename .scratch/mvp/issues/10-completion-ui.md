@@ -10,7 +10,7 @@ Status: ready-for-agent
 
 Capture Session が正常完了 or 停止で終了したあと、Output Document をすぐ確認できるアクションをバー上に提供する。
 
-- フロント：完了状態時に「PDF を開く」「フォルダで表示」ボタンを表示。
+- フロント：完了状態時に「PDF を開く」「フォルダで表示」「リセット」ボタンをバー内に表示。バー横幅の制約から、開始／停止／完了アクションは**排他表示**にする（状態に応じてボタンが差し替わる）。
 - `app.go`：
   - `OpenOutputDocument()` メソッド：保存パスを `open` コマンドまたは Wails の `runtime.BrowserOpenURL` で開く（macOS のデフォルト PDF ビューア = Preview.app）。
   - `RevealOutputDocument()` メソッド：保存パスを `open -R <path>` で Finder ハイライト表示。

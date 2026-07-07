@@ -16,6 +16,8 @@ import {
 import {
 	WindowGetPosition,
 	WindowGetSize,
+	WindowSetMaxSize,
+	WindowSetMinSize,
 	WindowSetPosition,
 	WindowSetSize,
 } from "../wailsjs/runtime/runtime";
@@ -32,6 +34,8 @@ vi.mock("../wailsjs/go/main/App", () => ({
 vi.mock("../wailsjs/runtime/runtime", () => ({
 	WindowSetSize: vi.fn(),
 	WindowSetPosition: vi.fn(),
+	WindowSetMinSize: vi.fn(),
+	WindowSetMaxSize: vi.fn(),
 	WindowGetSize: vi.fn(() => Promise.resolve({ w: 800, h: 600 })),
 	WindowGetPosition: vi.fn(() => Promise.resolve({ x: 100, y: 100 })),
 }));
@@ -91,6 +95,8 @@ beforeEach(() => {
 		.mockResolvedValue({ x: 10, y: 20, width: 100, height: 50 });
 	vi.mocked(WindowSetSize).mockClear();
 	vi.mocked(WindowSetPosition).mockClear();
+	vi.mocked(WindowSetMinSize).mockClear();
+	vi.mocked(WindowSetMaxSize).mockClear();
 	vi.mocked(WindowGetSize).mockClear().mockResolvedValue({ w: 800, h: 600 });
 	vi.mocked(WindowGetPosition)
 		.mockClear()
@@ -485,6 +491,24 @@ describe("App", () => {
 				advanceClickPoint: { x: 750, y: 800 },
 			}),
 		);
+	});
+
+	it("renders the main controls inside a toolbar landmark (floating bar)", () => {
+		render(<App />);
+		const bar = screen.getByRole("toolbar", { name: /pasha controls/i });
+		expect(bar).toBeInTheDocument();
+		expect(within(bar).getByLabelText(/repeat count/i)).toBeInTheDocument();
+		expect(
+			within(bar).getByRole("button", { name: /範囲選択/ }),
+		).toBeInTheDocument();
+		expect(
+			within(bar).getByRole("button", { name: /テスト撮影/ }),
+		).toBeInTheDocument();
+	});
+
+	it("does not render the legacy logo image (bar has no room for it)", () => {
+		render(<App />);
+		expect(screen.queryByAltText(/logo/i)).not.toBeInTheDocument();
 	});
 
 	it("shows a region-selected indicator after a region has been picked", async () => {

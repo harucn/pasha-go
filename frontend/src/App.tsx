@@ -1,4 +1,3 @@
-import logo from "./assets/images/logo-universal.png";
 import "./App.css";
 import {
 	type PointerEvent as ReactPointerEvent,
@@ -17,6 +16,8 @@ import { main } from "../wailsjs/go/models";
 import {
 	WindowGetPosition,
 	WindowGetSize,
+	WindowSetMaxSize,
+	WindowSetMinSize,
 	WindowSetPosition,
 	WindowSetSize,
 } from "../wailsjs/runtime/runtime";
@@ -100,6 +101,10 @@ function App() {
 		if (orig) {
 			WindowSetPosition(orig.pos.x, orig.pos.y);
 			WindowSetSize(orig.size.w, orig.size.h);
+			// Re-lock the bar to its original (fixed) dimensions so the user
+			// cannot resize it after returning from Capture Region selection.
+			WindowSetMinSize(orig.size.w, orig.size.h);
+			WindowSetMaxSize(orig.size.w, orig.size.h);
 		}
 	}, []);
 
@@ -134,6 +139,10 @@ function App() {
 			WindowGetPosition(),
 		]);
 		originalWindowRef.current = { size, pos };
+		// Relax the size lock so the user can resize the region-selection
+		// window freely. The bar's Min/Max are re-applied in restoreWindow.
+		WindowSetMinSize(200, 150);
+		WindowSetMaxSize(0, 0);
 		WindowSetSize(REGION_FRAME_WIDTH, REGION_FRAME_HEIGHT);
 		setSelectingRegion(true);
 	}
@@ -206,12 +215,16 @@ function App() {
 	return (
 		<div id="App">
 			{!selectingRegion && (
-				<div className="main-panel">
-					<img src={logo} id="logo" alt="logo" />
+				<div className="floating-bar">
 					<div id="result" className="result">
 						{status}
 					</div>
-					<div id="input" className="input-box">
+					<div
+						id="input"
+						className="input-box"
+						role="toolbar"
+						aria-label="pasha controls"
+					>
 						<label htmlFor="repeat-count">Repeat Count</label>
 						<input
 							id="repeat-count"
