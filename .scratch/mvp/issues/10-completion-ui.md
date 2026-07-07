@@ -14,14 +14,14 @@ Capture Session が正常完了 or 停止で終了したあと、Output Document
 - `app.go`：
   - `OpenOutputDocument()` メソッド：保存パスを `open` コマンドまたは Wails の `runtime.BrowserOpenURL` で開く（macOS のデフォルト PDF ビューア = Preview.app）。
   - `RevealOutputDocument()` メソッド：保存パスを `open -R <path>` で Finder ハイライト表示。
-- 次の撮影に進むための「リセット」ボタンも併設（設定 = Region / ClickPoint をクリアして撮影前状態に戻す）。
+- 次の撮影に進むための「リセット」ボタンも併設（設定 = Region / ClickPoint をクリアして撮影前状態に戻す。#06 のピボットにより両者は同時に管理されるため、実装上は一括クリアでよい）。
 
 ## Acceptance criteria
 
 - [ ] 撮影完了 or 停止後、「PDF を開く」「フォルダで表示」「リセット」ボタンが表示される
 - [ ] 「PDF を開く」で Preview.app が立ち上がり生成 PDF が表示される
 - [ ] 「フォルダで表示」で Finder が立ち上がり該当 PDF がハイライトされる
-- [ ] 「リセット」で Region / ClickPoint がクリアされ、再度それらを選択しないと開始できない状態になる
+- [ ] 「リセット」で Region / ClickPoint がクリアされ、範囲選択ダイアログを再度実行しないと開始できない状態になる
 
 ## Blocked by
 
