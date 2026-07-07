@@ -4,33 +4,6 @@
 	background-color: transparent;
 }
 
-.main-panel {
-	display: inline-block;
-	margin-top: 40px;
-	padding: 20px 32px 24px;
-	background: rgba(27, 38, 54, 0.9);
-	border-radius: 12px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-#logo {
-	display: block;
-	width: 50%;
-	height: 50%;
-	margin: auto;
-	padding: 10% 0 0;
-	background-position: center;
-	background-repeat: no-repeat;
-	background-size: 100% 100%;
-	background-origin: content-box;
-}
-
-.result {
-	height: 20px;
-	line-height: 20px;
-	margin: 1.5rem auto;
-}
-
 .input-box .btn {
 	width: 60px;
 	height: 30px;
@@ -68,6 +41,94 @@
 	background-color: rgba(255, 255, 255, 1);
 }
 
+.floating-bar {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: center;
+	/* Reserve ~24px top padding for the native macOS traffic-light buttons
+	   (close / minimize) which are drawn at the top-left. */
+	padding: 24px 12px 6px;
+	background: rgba(27, 38, 54, 0.92);
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+	color: #f5f7fa;
+	--wails-draggable: drag;
+	-webkit-app-region: drag;
+	overflow: hidden;
+}
+
+.floating-bar .result {
+	height: 16px;
+	line-height: 16px;
+	margin: 0 0 4px;
+	font-size: 0.72em;
+	color: #cfd9df;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-align: left;
+	--wails-draggable: drag;
+	-webkit-app-region: drag;
+}
+
+.floating-bar .input-box {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: nowrap;
+	white-space: nowrap;
+	--wails-draggable: no-drag;
+	-webkit-app-region: no-drag;
+}
+
+.floating-bar .input-box label {
+	font-size: 0.75em;
+	color: #cfd9df;
+}
+
+.floating-bar .input-box .input {
+	height: 26px;
+	line-height: 26px;
+	padding: 0 6px;
+	font-size: 0.85em;
+}
+
+.floating-bar .input-box .input#repeat-count,
+.floating-bar .input-box .input#step-interval {
+	width: 56px;
+}
+
+.floating-bar .input-box .input#output-file-name {
+	width: 140px;
+}
+
+.floating-bar .input-box .btn {
+	height: 26px;
+	line-height: 26px;
+	margin: 0;
+	padding: 0 10px;
+	font-size: 0.8em;
+	white-space: nowrap;
+	width: auto;
+	min-width: 60px;
+}
+
+.floating-bar .input-box .output-dir,
+.floating-bar .input-box .region-indicator,
+.floating-bar .input-box .click-point-indicator {
+	margin-left: 4px;
+	font-size: 0.72em;
+	color: #cfd9df;
+	max-width: 140px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .region-frame {
 	position: fixed;
 	inset: 0;
@@ -75,6 +136,7 @@
 	border: 3px dashed #4dc4ff;
 	box-sizing: border-box;
 	z-index: 9999;
+	--wails-draggable: drag;
 	-webkit-app-region: drag;
 }
 
@@ -90,6 +152,7 @@
 	background: rgba(0, 0, 0, 0.8);
 	border-radius: 8px;
 	color: #fff;
+	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
 }
 
@@ -111,18 +174,6 @@
 	font-weight: bold;
 }
 
-.region-indicator {
-	margin-left: 10px;
-	font-size: 0.85em;
-	color: #cfd9df;
-}
-
-.click-point-indicator {
-	margin-left: 10px;
-	font-size: 0.85em;
-	color: #cfd9df;
-}
-
 .click-point-marker {
 	position: absolute;
 	width: 24px;
@@ -136,6 +187,7 @@
 	box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
 	cursor: grab;
 	touch-action: none;
+	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
 	z-index: 10000;
 }
