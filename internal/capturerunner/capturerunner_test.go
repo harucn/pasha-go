@@ -96,7 +96,7 @@ func validPlan(dir string) capturerunner.Plan {
 func TestRunner_Run_HappyPath_WiresAllCollaborators(t *testing.T) {
 	r, scr, clk, pdf := newRunnerWithFakes(t)
 
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil); err != nil {
+	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestRunner_Run_ForwardsProgressPerStep(t *testing.T) {
 		got = append(got, [2]int{current, total})
 	}
 
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress); err != nil {
+	if err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestRunner_Run_ForwardsProgressPerStep(t *testing.T) {
 
 func TestRunner_Run_NilProgressIsAllowed(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil); err != nil {
+	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
 		t.Fatalf("Run with nil progress: %v", err)
 	}
 }
@@ -149,7 +149,7 @@ func TestRunner_Run_RejectsInvalidRepeatCount(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.RepeatCount = repeat
-		if err := r.Run(context.Background(), p, nil); err == nil {
+		if err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(RepeatCount=%d): expected error, got nil", repeat)
 		}
 	}
@@ -161,7 +161,7 @@ func TestRunner_Run_RejectsInvalidStepInterval(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.StepIntervalSeconds = sec
-		if err := r.Run(context.Background(), p, nil); err == nil {
+		if err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(StepIntervalSeconds=%v): expected error, got nil", sec)
 		}
 	}
@@ -171,7 +171,7 @@ func TestRunner_Run_RejectsEmptyOutputDir(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputDir = ""
-	if err := r.Run(context.Background(), p, nil); err == nil {
+	if err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(empty OutputDir): expected error, got nil")
 	}
 }
@@ -180,7 +180,7 @@ func TestRunner_Run_RejectsEmptyOutputFileName(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputFileName = ""
-	if err := r.Run(context.Background(), p, nil); err == nil {
+	if err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(empty OutputFileName): expected error, got nil")
 	}
 }
@@ -189,7 +189,7 @@ func TestRunner_Run_RejectsWhitespaceOnlyOutputFileName(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputFileName = "   "
-	if err := r.Run(context.Background(), p, nil); err == nil {
+	if err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(whitespace-only OutputFileName): expected error, got nil")
 	}
 }
@@ -205,7 +205,7 @@ func TestRunner_Run_RejectsEmptyCaptureRegion(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.CaptureRegion = region
-		if err := r.Run(context.Background(), p, nil); err == nil {
+		if err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(CaptureRegion=%v): expected error, got nil", region)
 		}
 	}
@@ -219,7 +219,7 @@ func TestRunner_Run_ResolvesCollisionByAppendingSuffix(t *testing.T) {
 	}
 
 	r, _, _, _, lastPath := newRunnerWithFakesCapturingPath(t)
-	if err := r.Run(context.Background(), validPlan(dir), nil); err != nil {
+	if err := r.Run(context.Background(), validPlan(dir), nil, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -233,7 +233,7 @@ func TestRunner_Run_UsesDesiredPathWhenNoCollision(t *testing.T) {
 	dir := t.TempDir()
 
 	r, _, _, _, lastPath := newRunnerWithFakesCapturingPath(t)
-	if err := r.Run(context.Background(), validPlan(dir), nil); err != nil {
+	if err := r.Run(context.Background(), validPlan(dir), nil, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 

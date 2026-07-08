@@ -4,6 +4,7 @@ import (
 	"context"
 	"image"
 	"regexp"
+	"sync/atomic"
 	"testing"
 
 	"pasha-go/internal/capturerunner"
@@ -14,12 +15,28 @@ type fakeRunner struct {
 	lastPlan   capturerunner.Plan
 	onProgress func(current, total int)
 	err        error
+
+	// started, if non-nil, is closed once Run has registered its stop
+	// function via onStart; release, if non-nil, blocks Run until closed.
+	// Together they let a test observe an in-flight session.
+	started    chan struct{}
+	release    chan struct{}
+	stopCalled atomic.Bool
 }
 
-func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int)) error {
+func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) error {
 	f.called = true
 	f.lastPlan = p
 	f.onProgress = onProgress
+	if onStart != nil {
+		onStart(func() { f.stopCalled.Store(true) })
+	}
+	if f.started != nil {
+		close(f.started)
+	}
+	if f.release != nil {
+		<-f.release
+	}
 	return f.err
 }
 
@@ -86,6 +103,29 @@ func TestRunTestSession_SuppliesProgressCallbackToRunner(t *testing.T) {
 	// The callback must not panic when the app has no runtime context
 	// (as in unit tests, where startup was never called).
 	r.onProgress(1, 10)
+}
+
+func TestStopSession_StopsActiveSession(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	r := &fakeRunner{started: started, release: release}
+	app := newAppWithRunner(r)
+
+	go func() { _ = app.RunTestSession(validTestSessionParams()) }()
+	<-started // wait until the session has registered its stop handle
+
+	app.StopSession()
+	if !r.stopCalled.Load() {
+		t.Fatal("StopSession did not stop the active session")
+	}
+	close(release)
+}
+
+func TestStopSession_NoActiveSession_IsNoOp(t *testing.T) {
+	app := newAppWithRunner(&fakeRunner{})
+
+	// Must not panic when nothing is running.
+	app.StopSession()
 }
 
 func TestRunTestSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {

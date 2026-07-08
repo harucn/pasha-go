@@ -12,6 +12,7 @@ import {
 	DefaultOutputFileName,
 	GetSelectedRegion,
 	RunTestSession,
+	StopSession,
 } from "../wailsjs/go/main/App";
 import {
 	EventsOn,
@@ -25,6 +26,7 @@ import {
 
 vi.mock("../wailsjs/go/main/App", () => ({
 	RunTestSession: vi.fn(() => Promise.resolve()),
+	StopSession: vi.fn(() => Promise.resolve()),
 	DefaultOutputFileName: vi.fn(() => Promise.resolve("pasha-2026-06-28_15-30")),
 	ChooseOutputDirectory: vi.fn(() => Promise.resolve("")),
 	GetSelectedRegion: vi.fn(() =>
@@ -87,7 +89,8 @@ async function selectRegion(
 }
 
 beforeEach(() => {
-	vi.mocked(RunTestSession).mockClear();
+	vi.mocked(RunTestSession).mockClear().mockResolvedValue(undefined);
+	vi.mocked(StopSession).mockClear().mockResolvedValue(undefined);
 	vi.mocked(ChooseOutputDirectory).mockClear();
 	vi.mocked(DefaultOutputFileName)
 		.mockClear()
@@ -534,6 +537,57 @@ describe("App", () => {
 
 		progressHandler?.({ current: 10, total: 10 });
 		expect(await screen.findByText(/10\s*\/\s*10/)).toBeInTheDocument();
+	});
+
+	it("swaps テスト撮影 for a 停止 button while a session runs and calls StopSession on click", async () => {
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
+		// Keep the session pending so `running` stays true and the 停止 button
+		// remains on screen.
+		let resolveRun: (() => void) | undefined;
+		vi.mocked(RunTestSession).mockImplementationOnce(
+			() =>
+				new Promise<void>((res) => {
+					resolveRun = () => res();
+				}),
+		);
+		const user = userEvent.setup();
+		render(<App />);
+		await waitFor(() => {
+			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
+			expect(input.value).toBe("pasha-2026-06-28_15-30");
+		});
+		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
+		await screen.findByText("/tmp/out");
+		await selectRegion(user);
+
+		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+
+		const stopButton = await screen.findByRole("button", { name: /停止/ });
+		expect(
+			screen.queryByRole("button", { name: /テスト撮影/ }),
+		).not.toBeInTheDocument();
+
+		await user.click(stopButton);
+		expect(StopSession).toHaveBeenCalled();
+
+		resolveRun?.();
+	});
+
+	it("shows a 撮影終了 state on the bar when a session:completed event arrives", async () => {
+		let completedHandler: (() => void) | undefined;
+		vi.mocked(EventsOn).mockImplementation((event, handler) => {
+			if (event === "session:completed") {
+				completedHandler = handler as () => void;
+			}
+			return () => {};
+		});
+
+		render(<App />);
+
+		expect(completedHandler).toBeDefined();
+		completedHandler?.();
+
+		expect(await screen.findByText(/撮影終了/)).toBeInTheDocument();
 	});
 
 	it("shows a region-selected indicator after a region has been picked", async () => {

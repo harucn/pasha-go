@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # 09: 停止ボタン
 
@@ -18,10 +18,10 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 撮影中に停止ボタンを押すと、現在の Capture Step が完了してからループが止まる
-- [ ] 停止時点までの PDF が正しく保存され、Preview.app で開ける
-- [ ] 停止後、バーは「撮影終了」状態を示す
-- [ ] 撮影していない時は停止ボタンが disabled
+- [x] 撮影中に停止ボタンを押すと、現在の Capture Step が完了してからループが止まる
+- [x] 停止時点までの PDF が正しく保存され、Preview.app で開ける
+- [x] 停止後、バーは「撮影終了」状態を示す
+- [x] 撮影していない時は停止ボタンが disabled（撮影中のみ停止ボタンを表示する排他表示で担保）
 
 ## Blocked by
 

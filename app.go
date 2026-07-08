@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"sync"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -19,7 +20,7 @@ import (
 // assembly. In production this is *capturerunner.Runner; tests can
 // substitute a fake.
 type sessionRunner interface {
-	Run(ctx context.Context, p capturerunner.Plan, onProgress func(current, total int)) error
+	Run(ctx context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) error
 }
 
 // App is the Wails-bound adapter. It holds the runtime context and a
@@ -28,6 +29,11 @@ type sessionRunner interface {
 type App struct {
 	ctx    context.Context
 	runner sessionRunner
+
+	// mu guards stop, the cooperative stop handle for the currently
+	// running Capture Session. It is nil whenever no session is in flight.
+	mu   sync.Mutex
+	stop func()
 }
 
 // NewApp constructs the App together with a Runner wired to the real
@@ -149,14 +155,47 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 		ctx = context.Background()
 	}
 
-	return a.runner.Run(ctx, capturerunner.Plan{
+	err := a.runner.Run(ctx, capturerunner.Plan{
 		RepeatCount:         params.RepeatCount,
 		StepIntervalSeconds: params.StepIntervalSeconds,
 		CaptureRegion:       region,
 		AdvanceClickPoint:   clickPoint,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
-	}, a.emitProgress)
+	}, a.emitProgress, a.registerStop)
+
+	a.clearStop()
+	if err == nil {
+		a.emitCompleted()
+	}
+	return err
+}
+
+// registerStop stores the stop handle for the in-flight Capture Session so
+// StopSession can end it later. Called by the Runner once the session exists.
+func (a *App) registerStop(stop func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stop = stop
+}
+
+// clearStop drops the stop handle once the session has finished.
+func (a *App) clearStop() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stop = nil
+}
+
+// StopSession cooperatively stops the running Capture Session: the current
+// Capture Step finishes, then the loop ends and the Output Document is saved
+// (per issue #09 / PRD Q3). It is a no-op when no session is running.
+func (a *App) StopSession() {
+	a.mu.Lock()
+	stop := a.stop
+	a.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 }
 
 // SessionProgress is the payload emitted on the "session:progress" event
@@ -178,4 +217,15 @@ func (a *App) emitProgress(current, total int) {
 		Current: current,
 		Total:   total,
 	})
+}
+
+// emitCompleted notifies the frontend that the Capture Session has ended
+// (whether it ran to completion or was stopped), so the UI can transition to
+// the finished state. Same event channel shape as session:progress (#08).
+// No-op when the runtime context is absent (e.g. in unit tests).
+func (a *App) emitCompleted() {
+	if a.ctx == nil {
+		return
+	}
+	wailsRuntime.EventsEmit(a.ctx, "session:completed")
 }
