@@ -74,6 +74,36 @@
 	-webkit-app-region: drag;
 }
 
+.floating-bar .result-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 0 6px;
+	border-radius: 4px;
+	background: #b3261e;
+	color: #fff;
+	font-weight: 600;
+}
+
+.floating-bar .result-error .error-message {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.floating-bar .result-error .error-close {
+	flex: 0 0 auto;
+	border: none;
+	background: transparent;
+	color: #fff;
+	font-size: 1.1em;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 2px;
+	--wails-draggable: no-drag;
+	-webkit-app-region: no-drag;
+}
+
 .floating-bar .input-box {
 	display: flex;
 	flex-direction: row;

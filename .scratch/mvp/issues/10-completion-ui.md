@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: wontfix
 
 # 10: 完了UI（開く / フォルダで表示）
 

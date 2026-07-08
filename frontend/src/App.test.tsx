@@ -590,6 +590,41 @@ describe("App", () => {
 		expect(await screen.findByText(/撮影終了/)).toBeInTheDocument();
 	});
 
+	it("shows a red inline error on the bar when a session:error event arrives", async () => {
+		let errorHandler: ((data: unknown) => void) | undefined;
+		vi.mocked(EventsOn).mockImplementation((event, handler) => {
+			if (event === "session:error") {
+				errorHandler = handler as (data: unknown) => void;
+			}
+			return () => {};
+		});
+
+		render(<App />);
+
+		expect(errorHandler).toBeDefined();
+		errorHandler?.({ message: "スクリーンキャプチャに失敗しました。" });
+
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("スクリーンキャプチャに失敗しました。");
+	});
+
+	it("dismisses the error when the close button is clicked", async () => {
+		let errorHandler: ((data: unknown) => void) | undefined;
+		vi.mocked(EventsOn).mockImplementation((event, handler) => {
+			if (event === "session:error") {
+				errorHandler = handler as (data: unknown) => void;
+			}
+			return () => {};
+		});
+		const user = userEvent.setup();
+		render(<App />);
+		errorHandler?.({ message: "PDF の書き込みに失敗しました。" });
+
+		await user.click(await screen.findByRole("button", { name: /閉じる/ }));
+
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	});
+
 	it("shows a region-selected indicator after a region has been picked", async () => {
 		const user = userEvent.setup();
 		render(<App />);
