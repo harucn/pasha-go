@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"pasha-go/internal/clicker"
 	"pasha-go/internal/clock"
 	"pasha-go/internal/screener"
+	"pasha-go/internal/session"
 )
 
 // sessionRunner is the seam through which App delegates Capture Session
@@ -167,8 +169,26 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 	a.clearStop()
 	if err == nil {
 		a.emitCompleted()
+	} else {
+		a.emitError(humanErrorMessage(err))
 	}
 	return err
+}
+
+// humanErrorMessage translates a Capture Session error into a message the user
+// can act on, keyed by the origin sentinel the session package wraps in. The
+// underlying technical error is intentionally hidden from the user (#11).
+func humanErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, session.ErrCapture):
+		return "スクリーンキャプチャに失敗しました。Screen Recording 権限が無効になっている可能性があります。"
+	case errors.Is(err, session.ErrPdfWrite):
+		return "PDF の書き込みに失敗しました。ディスクの空き容量や保存先の権限を確認してください。"
+	case errors.Is(err, session.ErrClick):
+		return "自動クリックに失敗しました。アクセシビリティ権限が無効になっている可能性があります。"
+	default:
+		return "撮影中にエラーが発生しました。もう一度お試しください。"
+	}
 }
 
 // registerStop stores the stop handle for the in-flight Capture Session so
@@ -228,4 +248,20 @@ func (a *App) emitCompleted() {
 		return
 	}
 	wailsRuntime.EventsEmit(a.ctx, "session:completed")
+}
+
+// SessionError is the payload emitted on the "session:error" event when a
+// Capture Session aborts. Message is a user-facing, human-readable string.
+type SessionError struct {
+	Message string `json:"message"`
+}
+
+// emitError notifies the frontend that the Capture Session failed, carrying a
+// human-readable message for the bar's red error display (#11). No-op when the
+// runtime context is absent (e.g. in unit tests).
+func (a *App) emitError(message string) {
+	if a.ctx == nil {
+		return
+	}
+	wailsRuntime.EventsEmit(a.ctx, "session:error", SessionError{Message: message})
 }

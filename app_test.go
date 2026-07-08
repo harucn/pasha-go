@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"image"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	"pasha-go/internal/capturerunner"
+	"pasha-go/internal/session"
 )
 
 type fakeRunner struct {
@@ -103,6 +107,27 @@ func TestRunTestSession_SuppliesProgressCallbackToRunner(t *testing.T) {
 	// The callback must not panic when the app has no runtime context
 	// (as in unit tests, where startup was never called).
 	r.onProgress(1, 10)
+}
+
+func TestHumanErrorMessage_ClassifiesByOrigin(t *testing.T) {
+	cases := []struct {
+		name    string
+		err     error
+		wantSub string
+	}{
+		{"capture", fmt.Errorf("%w: x", session.ErrCapture), "キャプチャ"},
+		{"pdf", fmt.Errorf("%w: x", session.ErrPdfWrite), "PDF"},
+		{"click", fmt.Errorf("%w: x", session.ErrClick), "クリック"},
+		{"unknown", errors.New("mystery"), "エラー"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := humanErrorMessage(tc.err)
+			if !strings.Contains(got, tc.wantSub) {
+				t.Errorf("humanErrorMessage(%v) = %q, want to contain %q", tc.err, got, tc.wantSub)
+			}
+		})
+	}
 }
 
 func TestStopSession_StopsActiveSession(t *testing.T) {

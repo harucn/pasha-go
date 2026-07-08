@@ -9,9 +9,19 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"sync/atomic"
 	"time"
+)
+
+// Origin sentinels tag a Capture Step failure by the collaborator that
+// produced it, so callers can render a cause-specific message (issue #11).
+// Errors are wrapped with %w, so use errors.Is to test them.
+var (
+	ErrCapture  = errors.New("screen capture failed")
+	ErrPdfWrite = errors.New("pdf write failed")
+	ErrClick    = errors.New("advance click failed")
 )
 
 type Screener interface {
@@ -63,8 +73,8 @@ func New(cfg Config) *CaptureSession {
 func (s *CaptureSession) Start(ctx context.Context) (err error) {
 	defer func() {
 		closeErr := s.cfg.PdfWriter.Close()
-		if err == nil {
-			err = closeErr
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("%w: %v", ErrPdfWrite, closeErr)
 		}
 	}()
 
@@ -78,18 +88,15 @@ func (s *CaptureSession) Start(ctx context.Context) (err error) {
 
 		img, err := s.cfg.Screener.Capture(s.cfg.CaptureRegion)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrCapture, err)
 		}
 		if err := s.cfg.PdfWriter.AppendPage(img); err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrPdfWrite, err)
 		}
 		if err := s.cfg.Clicker.Click(s.cfg.AdvanceClickPoint); err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrClick, err)
 		}
 		if err := s.cfg.Clock.Sleep(ctx, s.cfg.StepInterval); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
-			}
 			return err
 		}
 

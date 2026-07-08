@@ -39,6 +39,7 @@ function App() {
 		"Press the button to run a test session",
 	);
 	const [running, setRunning] = useState(false);
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [repeatCount, setRepeatCount] = useState("10");
 	const [stepInterval, setStepInterval] = useState("1.0");
 	const [outputFileName, setOutputFileName] = useState("");
@@ -143,6 +144,20 @@ function App() {
 		return off;
 	}, []);
 
+	// Subscribe to Capture Session errors (issue #11). The session aborts on
+	// the first collaborator failure; Go maps the cause to a human-readable
+	// message which we surface as a dismissable red banner on the bar.
+	useEffect(() => {
+		const off = EventsOn("session:error", (data: unknown) => {
+			const p = data as { message?: string };
+			setRunning(false);
+			setErrorMessage(
+				p?.message ?? "撮影中にエラーが発生しました。もう一度お試しください。",
+			);
+		});
+		return off;
+	}, []);
+
 	useEffect(() => {
 		if (!selectingRegion) return;
 		const onKey = (e: KeyboardEvent) => {
@@ -217,6 +232,7 @@ function App() {
 
 	async function runTestSession() {
 		if (!region || !clickPoint) return;
+		setErrorMessage(null);
 		setRunning(true);
 		setStatus("Running test session…");
 		try {
@@ -231,8 +247,10 @@ function App() {
 				}),
 			);
 			setStatus(`Done. Check ${outputDir}/${outputFileName.trim()}.pdf`);
-		} catch (e) {
-			setStatus(`Failed: ${String(e)}`);
+		} catch {
+			// The Go side emits a session:error event with a human-readable
+			// message, which drives the red banner; nothing to do here beyond
+			// swallowing the rejected promise.
 		} finally {
 			setRunning(false);
 		}
@@ -249,9 +267,23 @@ function App() {
 		<div id="App">
 			{!selectingRegion && (
 				<div className="floating-bar">
-					<div id="result" className="result">
-						{status}
-					</div>
+					{errorMessage ? (
+						<div id="result" className="result result-error" role="alert">
+							<span className="error-message">{errorMessage}</span>
+							<button
+								type="button"
+								className="error-close"
+								aria-label="閉じる"
+								onClick={() => setErrorMessage(null)}
+							>
+								×
+							</button>
+						</div>
+					) : (
+						<div id="result" className="result">
+							{status}
+						</div>
+					)}
 					<div
 						id="input"
 						className="input-box"

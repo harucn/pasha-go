@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"image"
 	"testing"
 	"time"
@@ -170,6 +171,56 @@ func TestCaptureSession_ClickerErrorAborts(t *testing.T) {
 	}
 	if pdf.closeCalls != 1 {
 		t.Errorf("Close calls = %d, want 1", pdf.closeCalls)
+	}
+}
+
+func TestCaptureSession_WrapsErrorsWithOriginSentinel(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  func() session.Config
+		want error
+	}{
+		{
+			name: "capture",
+			cfg: func() session.Config {
+				return newConfig(&fakeScreener{err: errSentinel("boom")}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{}, 3)
+			},
+			want: session.ErrCapture,
+		},
+		{
+			name: "append",
+			cfg: func() session.Config {
+				return newConfig(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{appendErr: errSentinel("boom")}, &fakeClock{}, 3)
+			},
+			want: session.ErrPdfWrite,
+		},
+		{
+			name: "click",
+			cfg: func() session.Config {
+				return newConfig(&fakeScreener{}, &fakeClicker{err: errSentinel("boom")}, &fakePdfWriter{}, &fakeClock{}, 3)
+			},
+			want: session.ErrClick,
+		},
+		{
+			name: "close",
+			cfg: func() session.Config {
+				return newConfig(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{closeErr: errSentinel("boom")}, &fakeClock{}, 1)
+			},
+			want: session.ErrPdfWrite,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := session.New(tc.cfg())
+			err := cs.Start(context.Background())
+			if err == nil {
+				t.Fatalf("Start: expected error")
+			}
+			if !errors.Is(err, tc.want) {
+				t.Errorf("error %v is not %v", err, tc.want)
+			}
+		})
 	}
 }
 
