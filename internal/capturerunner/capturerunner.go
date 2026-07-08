@@ -84,9 +84,11 @@ func New(scr session.Screener, clk session.Clicker, clock session.Clock, newPdf 
 
 // Run resolves the Output Document path, builds a PdfWriter, and starts
 // a Capture Session. onProgress, if non-nil, is invoked after each Capture
-// Step completes with (completedSteps, totalSteps). It returns the first
-// error encountered.
-func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int)) error {
+// Step completes with (completedSteps, totalSteps). onStart, if non-nil, is
+// invoked once with a stop function that cooperatively ends the session after
+// the current Capture Step; callers hold onto it to implement a stop button.
+// It returns the first error encountered.
+func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int), onStart func(stop func())) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
@@ -113,5 +115,8 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 		Clock:             r.clock,
 		Progress:          onProgress,
 	})
+	if onStart != nil {
+		onStart(cs.Stop)
+	}
 	return cs.Start(ctx)
 }

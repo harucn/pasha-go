@@ -11,6 +11,7 @@ import {
 	DefaultOutputFileName,
 	GetSelectedRegion,
 	RunTestSession,
+	StopSession,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 import {
@@ -131,6 +132,17 @@ function App() {
 		return off;
 	}, []);
 
+	// Subscribe to the Capture Session completion signal (issue #09). Fired
+	// whether the session ran to its Repeat Count or was stopped early; either
+	// way the bar transitions to the finished state.
+	useEffect(() => {
+		const off = EventsOn("session:completed", () => {
+			setRunning(false);
+			setStatus("撮影終了");
+		});
+		return off;
+	}, []);
+
 	useEffect(() => {
 		if (!selectingRegion) return;
 		const onKey = (e: KeyboardEvent) => {
@@ -226,6 +238,13 @@ function App() {
 		}
 	}
 
+	function stopTestSession() {
+		// Cooperative stop: the current Capture Step finishes, then the loop
+		// ends and the Output Document is saved. The Go side emits
+		// session:completed, which drives the bar to its finished state.
+		StopSession();
+	}
+
 	return (
 		<div id="App">
 			{!selectingRegion && (
@@ -289,21 +308,32 @@ function App() {
 								? `クリック位置指定済み (${clickPoint.x},${clickPoint.y})`
 								: ""}
 						</span>
-						<button
-							type="button"
-							className="btn"
-							onClick={runTestSession}
-							disabled={
-								running ||
-								!repeatCountValid ||
-								!stepIntervalValid ||
-								!outputsValid ||
-								!region ||
-								!clickPoint
-							}
-						>
-							テスト撮影
-						</button>
+						{/* Start and stop are mutually exclusive: the bar is too
+						    narrow to show both, so 撮影中 only shows 停止 (issue #09). */}
+						{running ? (
+							<button
+								type="button"
+								className="btn btn-primary"
+								onClick={stopTestSession}
+							>
+								停止
+							</button>
+						) : (
+							<button
+								type="button"
+								className="btn"
+								onClick={runTestSession}
+								disabled={
+									!repeatCountValid ||
+									!stepIntervalValid ||
+									!outputsValid ||
+									!region ||
+									!clickPoint
+								}
+							>
+								テスト撮影
+							</button>
+						)}
 					</div>
 				</div>
 			)}
