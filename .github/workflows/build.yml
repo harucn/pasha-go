@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: macOS (arm64)
@@ -30,13 +33,31 @@ jobs:
       - name: Build
         run: wails build -platform darwin/arm64
 
+      # ditto is what macOS itself uses: it keeps the executable bit and the
+      # bundle layout, and Finder expands the result on double-click. A plain
+      # upload-artifact zip would drop the executable bit ("all files will have
+      # 644") and leave Contents/MacOS/pasha-go unrunnable.
       - name: Archive app bundle
         working-directory: build/bin
-        run: tar -cf ../../pasha-go-darwin-arm64.tar pasha-go.app
+        run: ditto -c -k --sequesterRsrc --keepParent pasha-go.app ../../pasha-go-darwin-arm64.zip
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pasha-go-darwin-arm64
-          path: pasha-go-darwin-arm64.tar
+          path: pasha-go-darwin-arm64.zip
           archive: false
           retention-days: 14
+
+      # Artifacts need a signed-in GitHub account to download; a release asset
+      # does not. Tag by date + short SHA so /releases/latest/download stays a
+      # stable URL while every merge keeps its own entry.
+      - name: Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(date -u +%Y.%m.%d)-$(git rev-parse --short HEAD)"
+          gh release create "$tag" \
+            --title "$tag" \
+            --generate-notes \
+            pasha-go-darwin-arm64.zip
