@@ -352,7 +352,9 @@
 .region-frame {
 	position: fixed;
 	inset: 0;
-	background: transparent;
+	/* A faint veil, not a blur: backdrop-filter cannot reach past the window
+	   onto the desktop. Keep it light enough to frame the target through. */
+	background: rgba(24, 33, 47, 0.5);
 	border: 2px dashed var(--accent);
 	border-radius: 4px;
 	box-sizing: border-box;
@@ -371,13 +373,19 @@
 	align-items: center;
 	gap: 8px;
 	padding: 8px;
-	background: var(--bar-bg);
+	/* Lighter than the bar's own background: this floats over the content the
+	   user is trying to frame, so it should obscure as little as possible. */
+	background: rgba(24, 33, 47, 0.68);
 	border: 1px solid var(--bar-line);
 	border-radius: 10px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 	color: var(--bar-fg);
 	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
+}
+
+.region-frame-toolbar:hover {
+	background: rgba(24, 33, 47, 0.88);
 }
 
 .click-point-marker {

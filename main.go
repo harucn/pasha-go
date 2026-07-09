@@ -41,7 +41,11 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
 		Mac: &mac.Options{
 			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+			// Must stay false. It inserts a full-bleed NSVisualEffectView behind
+			// the webview, so anything semi-transparent in CSS composites onto
+			// frosted glass instead of the screen underneath — which defeats the
+			// Capture Region frame and its toolbar.
+			WindowIsTranslucent: false,
 			// Keep the traffic-light buttons (close/minimize) visible in
 			// the top-left corner while hiding the title bar background,
 			// so the window still looks like a compact floating bar.
