@@ -1,9 +1,8 @@
 name: Build
 
-# push only: pairing it with `pull_request` would run every branch twice once a
-# PR is open. Fork PRs are not a concern for this repo.
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
