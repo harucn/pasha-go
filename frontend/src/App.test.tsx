@@ -48,6 +48,12 @@ import App from "./App";
 
 type RegionGeometry = { x: number; y: number; width: number; height: number };
 
+// Strips the display-only LEFT-TO-RIGHT MARK the field prefixes its value with.
+function outputFolderValue(): string {
+	const input = screen.getByLabelText(/output folder/i) as HTMLInputElement;
+	return input.value.replace(/\u200e/g, "");
+}
+
 // selectRegion opens the region-selection dialog, mocks GetSelectedRegion,
 // optionally drags the click-point marker by the given delta (from its
 // initial center at (REGION_FRAME_WIDTH/2, REGION_FRAME_HEIGHT/2) = (250, 200)),
@@ -128,7 +134,7 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		await selectRegion(user);
@@ -176,9 +182,22 @@ describe("App", () => {
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue(
-				"/Users/foo/Documents",
-			);
+			expect(outputFolderValue()).toBe("/Users/foo/Documents");
+		});
+	});
+
+	// Without the mark, `direction: rtl` sweeps the leading "/" to the far
+	// right of the field, rendering ".../lua/config/".
+	it("prefixes the output folder path with a left-to-right mark", async () => {
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/Users/foo");
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+
+		await waitFor(() => {
+			const input = screen.getByLabelText(/output folder/i);
+			expect(input).toHaveValue("\u200e/Users/foo");
 		});
 	});
 
@@ -199,7 +218,7 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		const fileNameInput = screen.getByLabelText(/file name/i);
@@ -365,7 +384,7 @@ describe("App", () => {
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		await user.click(screen.getByRole("button", { name: /Set Range/ }));
@@ -411,7 +430,7 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
@@ -429,7 +448,7 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
@@ -452,7 +471,7 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		const repeatInput = screen.getByLabelText(/repeat count/i);
@@ -497,7 +516,7 @@ describe("App", () => {
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 
 		await selectRegion(user);
@@ -572,7 +591,7 @@ describe("App", () => {
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 		await waitFor(() => {
-			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+			expect(outputFolderValue()).toBe("/tmp/out");
 		});
 		await selectRegion(user);
 

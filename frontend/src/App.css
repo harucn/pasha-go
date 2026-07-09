@@ -46,18 +46,27 @@
 .floating-bar .result {
 	display: flex;
 	align-items: center;
+	/* Right-aligned: the traffic lights own the left of this row. The indent is
+	   the guard that keeps a long message from running back under them. */
+	justify-content: flex-end;
 	gap: 6px;
 	height: 16px;
-	margin: 0 2px 6px;
+	margin: 0 2px 6px 62px;
 	font-size: 11px;
 	font-variant-numeric: tabular-nums;
 	color: var(--bar-muted);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	text-align: left;
 	--wails-draggable: drag;
 	-webkit-app-region: drag;
+}
+
+.result-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .result-spinner {
@@ -129,9 +138,8 @@
 	-webkit-app-region: no-drag;
 }
 
-/* Each control sits in a field: a micro-label stacked above its input, or a
-   button paired with the value it produces. Stacking the label vertically is
-   what buys back the horizontal room the old single-row layout ran out of. */
+/* Stacking the label above its input buys back the horizontal room the
+   single-row layout ran out of. */
 .field {
 	display: flex;
 	flex-direction: column;
@@ -242,8 +250,7 @@
 	outline-offset: 2px;
 }
 
-/* Wins over .btn-primary on specificity, so a disabled Pasha drops the accent
-   fill entirely instead of keeping a cyan border around a grey face. */
+/* Outranks .btn-primary, so a disabled Pasha drops the accent fill entirely. */
 .btn:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
@@ -253,8 +260,7 @@
 	transform: none;
 }
 
-/* The one button the user opened the app to press. Filled accent, so it is
-   the first thing the eye lands on once the bar is ready to run. */
+/* The one button the user opened the app to press. */
 .btn-primary {
 	background: var(--accent);
 	border-color: var(--accent);
@@ -265,9 +271,7 @@
 	background: #6fd0ff;
 }
 
-/* Stop replaces Pasha in the same slot while a session runs. It is not
-   destructive (the Output Document is still saved), so it gets a warm
-   outline rather than a filled danger button. */
+/* Not destructive: the Output Document is still saved. Hence outline, not fill. */
 .btn-stop {
 	background: rgba(229, 83, 75, 0.14);
 	border-color: rgba(229, 83, 75, 0.55);
@@ -281,9 +285,8 @@
 
 /* ---------- Readouts (chosen folder / region / click point) ---------- */
 
-/* Fixed width so the toolbar never reflows as paths of different lengths are
-   chosen. Unfocused, the browser ellipsises the overflow; focused, the caret
-   and arrow keys reach the rest of the text. */
+/* Fixed width so the toolbar never reflows as paths of different lengths
+   are chosen. */
 .path-input {
 	width: 190px;
 	flex: 0 0 190px;
@@ -311,17 +314,14 @@
 	box-shadow: 0 0 0 2px rgba(77, 196, 255, 0.25);
 }
 
-/* Long POSIX paths are more legible truncated from the left, so `direction`
-   pushes the ellipsis to the leading edge. `text-align` then pins the text to
-   the left of the box, otherwise a path shorter than the field floats right.
-   Only applied when a path is present, so the placeholder stays plain LTR. */
+/* Ellipsise from the head, where the least useful segments are. `text-align`
+   stops a short path floating right. Absent when empty, so the placeholder
+   stays plain LTR. See displayPath() for the bidi caveat. */
 .path-input-rtl {
 	direction: rtl;
 	text-align: left;
 }
 
-/* A set/unset state reads faster as a glyph than as a word, so the chip
-   carries the check and the label only names what was set. */
 .status-chip {
 	display: inline-flex;
 	align-items: center;

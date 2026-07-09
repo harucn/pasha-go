@@ -34,6 +34,14 @@ type CaptureRegion = {
 const REGION_FRAME_WIDTH = 500;
 const REGION_FRAME_HEIGHT = 400;
 
+// Under the field's `direction: rtl`, bidi resolution sweeps a POSIX path's
+// leading "/" to the far right. A LEFT-TO-RIGHT MARK anchors it. Display only.
+const LRM = "\u200e";
+
+function displayPath(path: string): string {
+	return LRM + path;
+}
+
 function App() {
 	// Empty until a Capture Session reports something. The status line keeps
 	// its height so the toolbar below does not shift when a message appears.
@@ -285,7 +293,8 @@ function App() {
 							{running && (
 								<span className="result-spinner" aria-hidden="true" />
 							)}
-							{status}
+							{/* text-overflow needs a block container; the flex row is not one. */}
+							{status && <span className="result-text">{status}</span>}
 						</div>
 					)}
 					<div
@@ -334,17 +343,15 @@ function App() {
 							<button type="button" className="btn" onClick={chooseFolder}>
 								Choose Folder
 							</button>
-							{/* A read-only input rather than a span: it holds a fixed width
-							    and ellipsises while unfocused, yet the user can click into it
-							    and walk the caret through the whole path. A span with
-							    overflow:hidden cannot do the latter. */}
+							{/* Read-only input, not a span: it ellipsises while unfocused yet
+							    lets the caret walk the whole path once focused. */}
 							<input
 								type="text"
 								readOnly
 								aria-label="Output folder"
 								className={`path-input${outputDir ? " path-input-rtl" : ""}`}
 								title={outputDir || undefined}
-								value={outputDir}
+								value={outputDir ? displayPath(outputDir) : ""}
 								placeholder="(no folder chosen)"
 							/>
 						</div>
