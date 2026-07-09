@@ -181,13 +181,13 @@ func (a *App) RunTestSession(params TestSessionParams) error {
 func humanErrorMessage(err error) string {
 	switch {
 	case errors.Is(err, session.ErrCapture):
-		return "スクリーンキャプチャに失敗しました。Screen Recording 権限が無効になっている可能性があります。"
+		return "Screen capture failed. Screen Recording permission may be disabled."
 	case errors.Is(err, session.ErrPdfWrite):
-		return "PDF の書き込みに失敗しました。ディスクの空き容量や保存先の権限を確認してください。"
+		return "Could not write the PDF. Check the disk space and the permissions of the output folder."
 	case errors.Is(err, session.ErrClick):
-		return "自動クリックに失敗しました。アクセシビリティ権限が無効になっている可能性があります。"
+		return "Auto-click failed. Accessibility permission may be disabled."
 	default:
-		return "撮影中にエラーが発生しました。もう一度お試しください。"
+		return "Something went wrong during the session. Please try again."
 	}
 }
 

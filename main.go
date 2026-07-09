@@ -28,12 +28,12 @@ func main() {
 	// then re-locks them on restore.
 	err := wails.Run(&options.App{
 		Title:       "pasha-go",
-		Width:       940,
-		Height:      76,
-		MinWidth:    940,
-		MinHeight:   76,
-		MaxWidth:    940,
-		MaxHeight:   76,
+		Width:       960,
+		Height:      96,
+		MinWidth:    960,
+		MinHeight:   96,
+		MaxWidth:    960,
+		MaxHeight:   96,
 		AlwaysOnTop: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -41,7 +41,11 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
 		Mac: &mac.Options{
 			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+			// Must stay false. It inserts a full-bleed NSVisualEffectView behind
+			// the webview, so anything semi-transparent in CSS composites onto
+			// frosted glass instead of the screen underneath — which defeats the
+			// Capture Region frame and its toolbar.
+			WindowIsTranslucent: false,
 			// Keep the traffic-light buttons (close/minimize) visible in
 			// the top-left corner while hiding the title bar background,
 			// so the window still looks like a compact floating bar.

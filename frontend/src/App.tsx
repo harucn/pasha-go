@@ -34,10 +34,18 @@ type CaptureRegion = {
 const REGION_FRAME_WIDTH = 500;
 const REGION_FRAME_HEIGHT = 400;
 
+// Under the field's `direction: rtl`, bidi resolution sweeps a POSIX path's
+// leading "/" to the far right. A LEFT-TO-RIGHT MARK anchors it. Display only.
+const LRM = "\u200e";
+
+function displayPath(path: string): string {
+	return LRM + path;
+}
+
 function App() {
-	const [status, setStatus] = useState(
-		"Press the button to run a test session",
-	);
+	// Empty until a Capture Session reports something. The status line keeps
+	// its height so the toolbar below does not shift when a message appears.
+	const [status, setStatus] = useState("");
 	const [running, setRunning] = useState(false);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [repeatCount, setRepeatCount] = useState("10");
@@ -122,12 +130,12 @@ function App() {
 
 	// Subscribe to Capture Session progress ticks emitted from Go
 	// (app.go emitProgress). The bar is too narrow for a progress bar,
-	// so we render "N / M ステップ完了" as text (issue #08).
+	// so we render "N / M steps" as text (issue #08).
 	useEffect(() => {
 		const off = EventsOn("session:progress", (data: unknown) => {
 			const p = data as { current?: number; total?: number };
 			if (typeof p?.current === "number" && typeof p?.total === "number") {
-				setStatus(`${p.current} / ${p.total} ステップ完了`);
+				setStatus(`${p.current} / ${p.total} steps`);
 			}
 		});
 		return off;
@@ -139,7 +147,7 @@ function App() {
 	useEffect(() => {
 		const off = EventsOn("session:completed", () => {
 			setRunning(false);
-			setStatus("撮影終了");
+			setStatus("Finished");
 		});
 		return off;
 	}, []);
@@ -152,7 +160,8 @@ function App() {
 			const p = data as { message?: string };
 			setRunning(false);
 			setErrorMessage(
-				p?.message ?? "撮影中にエラーが発生しました。もう一度お試しください。",
+				p?.message ??
+					"Something went wrong during the session. Please try again.",
 			);
 		});
 		return off;
@@ -234,7 +243,7 @@ function App() {
 		if (!region || !clickPoint) return;
 		setErrorMessage(null);
 		setRunning(true);
-		setStatus("Running test session…");
+		setStatus("Running…");
 		try {
 			await RunTestSession(
 				new main.TestSessionParams({
@@ -246,7 +255,7 @@ function App() {
 					advanceClickPoint: clickPoint,
 				}),
 			);
-			setStatus(`Done. Check ${outputDir}/${outputFileName.trim()}.pdf`);
+			setStatus(`Saved to ${outputDir}/${outputFileName.trim()}.pdf`);
 		} catch {
 			// The Go side emits a session:error event with a human-readable
 			// message, which drives the red banner; nothing to do here beyond
@@ -273,15 +282,19 @@ function App() {
 							<button
 								type="button"
 								className="error-close"
-								aria-label="閉じる"
+								aria-label="Dismiss"
 								onClick={() => setErrorMessage(null)}
 							>
 								×
 							</button>
 						</div>
 					) : (
-						<div id="result" className="result">
-							{status}
+						<div id="result" className="result" title={status || undefined}>
+							{running && (
+								<span className="result-spinner" aria-hidden="true" />
+							)}
+							{/* text-overflow needs a block container; the flex row is not one. */}
+							{status && <span className="result-text">{status}</span>}
 						</div>
 					)}
 					<div
@@ -290,70 +303,97 @@ function App() {
 						role="toolbar"
 						aria-label="pasha controls"
 					>
-						<label htmlFor="repeat-count">Repeat Count</label>
-						<input
-							id="repeat-count"
-							type="number"
-							className="input"
-							min={1}
-							value={repeatCount}
-							onChange={(e) => setRepeatCount(e.target.value)}
-						/>
-						<label htmlFor="step-interval">Step Interval (sec)</label>
-						<input
-							id="step-interval"
-							type="number"
-							className="input"
-							min={0.1}
-							step={0.1}
-							value={stepInterval}
-							onChange={(e) => setStepInterval(e.target.value)}
-						/>
-						<label htmlFor="output-file-name">File Name</label>
-						<input
-							id="output-file-name"
-							type="text"
-							className="input"
-							value={outputFileName}
-							onChange={(e) => setOutputFileName(e.target.value)}
-						/>
-						<button type="button" className="btn" onClick={chooseFolder}>
-							Choose Folder
-						</button>
-						<span className="output-dir">
-							{outputDir || "(no folder chosen)"}
-						</span>
-						<button
-							type="button"
-							className="btn"
-							onClick={beginRegionSelection}
-						>
-							範囲選択
-						</button>
-						<span className="region-indicator">
-							{region
-								? `範囲指定済み (${region.x},${region.y}) ${region.width}×${region.height}`
-								: "(未指定)"}
-						</span>
-						<span className="click-point-indicator">
-							{clickPoint
-								? `クリック位置指定済み (${clickPoint.x},${clickPoint.y})`
-								: ""}
-						</span>
+						<div className="field">
+							<label htmlFor="repeat-count">Repeat Count</label>
+							<input
+								id="repeat-count"
+								type="number"
+								className="input"
+								min={1}
+								value={repeatCount}
+								onChange={(e) => setRepeatCount(e.target.value)}
+							/>
+						</div>
+						<div className="field">
+							<label htmlFor="step-interval">Step Interval (sec)</label>
+							<input
+								id="step-interval"
+								type="number"
+								className="input"
+								min={0.1}
+								step={0.1}
+								value={stepInterval}
+								onChange={(e) => setStepInterval(e.target.value)}
+							/>
+						</div>
+						<div className="field">
+							<label htmlFor="output-file-name">File Name</label>
+							<input
+								id="output-file-name"
+								type="text"
+								className="input"
+								value={outputFileName}
+								onChange={(e) => setOutputFileName(e.target.value)}
+							/>
+						</div>
+
+						<div className="field-separator" aria-hidden="true" />
+
+						<div className="field">
+							<button type="button" className="btn" onClick={chooseFolder}>
+								Choose Folder
+							</button>
+							{/* Read-only input, not a span: it ellipsises while unfocused yet
+							    lets the caret walk the whole path once focused. */}
+							<input
+								type="text"
+								readOnly
+								aria-label="Output folder"
+								className={`path-input${outputDir ? " path-input-rtl" : ""}`}
+								title={outputDir || undefined}
+								value={outputDir ? displayPath(outputDir) : ""}
+								placeholder="(no folder chosen)"
+							/>
+						</div>
+
+						<div className="field">
+							<button
+								type="button"
+								className="btn"
+								onClick={beginRegionSelection}
+							>
+								Set Range
+							</button>
+							{/* The Capture Region and the Advance Click Point are always
+							    set together by confirmRegionSelection, so one indicator
+							    covers both. The exact numbers are not actionable here —
+							    the user verifies the framing in the selection window. */}
+							<span
+								role="status"
+								className={`status-chip${region ? " status-chip-set" : ""}`}
+							>
+								<span className="status-chip-icon" aria-hidden="true">
+									{region ? "✓" : "–"}
+								</span>
+								{region ? "Set" : "Not set"}
+							</span>
+						</div>
+
+						<div className="field-spacer" />
 						{/* Start and stop are mutually exclusive: the bar is too
-						    narrow to show both, so 撮影中 only shows 停止 (issue #09). */}
+						    narrow to show both, so a running session only shows Stop (issue #09). */}
 						{running ? (
 							<button
 								type="button"
-								className="btn btn-primary"
+								className="btn btn-stop"
 								onClick={stopTestSession}
 							>
-								停止
+								Stop
 							</button>
 						) : (
 							<button
 								type="button"
-								className="btn"
+								className="btn btn-primary"
 								onClick={runTestSession}
 								disabled={
 									!repeatCountValid ||
@@ -363,7 +403,7 @@ function App() {
 									!clickPoint
 								}
 							>
-								テスト撮影
+								Pasha
 							</button>
 						)}
 					</div>
@@ -377,7 +417,7 @@ function App() {
 				>
 					<button
 						type="button"
-						aria-label="クリック位置マーカー"
+						aria-label="Advance click point marker"
 						className="click-point-marker"
 						style={{ left: `${markerPos.x}px`, top: `${markerPos.y}px` }}
 						onPointerDown={handleMarkerPointerDown}
@@ -385,22 +425,19 @@ function App() {
 						onPointerUp={handleMarkerPointerUp}
 					/>
 					<div className="region-frame-toolbar">
-						<span className="region-frame-hint">
-							この窓の範囲をキャプチャします。窓を移動・リサイズして位置を合わせてください。マーカーをドラッグしてクリック位置を決めてください。
-						</span>
 						<button
 							type="button"
 							className="btn btn-primary"
 							onClick={confirmRegionSelection}
 						>
-							確定
+							Set
 						</button>
 						<button
 							type="button"
 							className="btn"
 							onClick={cancelRegionSelection}
 						>
-							キャンセル
+							Cancel
 						</button>
 					</div>
 				</div>

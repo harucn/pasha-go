@@ -48,6 +48,12 @@ import App from "./App";
 
 type RegionGeometry = { x: number; y: number; width: number; height: number };
 
+// Strips the display-only LEFT-TO-RIGHT MARK the field prefixes its value with.
+function outputFolderValue(): string {
+	const input = screen.getByLabelText(/output folder/i) as HTMLInputElement;
+	return input.value.replace(/\u200e/g, "");
+}
+
 // selectRegion opens the region-selection dialog, mocks GetSelectedRegion,
 // optionally drags the click-point marker by the given delta (from its
 // initial center at (REGION_FRAME_WIDTH/2, REGION_FRAME_HEIGHT/2) = (250, 200)),
@@ -58,7 +64,7 @@ async function selectRegion(
 	region: RegionGeometry = { x: 10, y: 20, width: 100, height: 50 },
 	markerDelta: { dx: number; dy: number } = { dx: 0, dy: 0 },
 ) {
-	await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+	await user.click(screen.getByRole("button", { name: /Set Range/ }));
 	await screen.findByRole("dialog", { name: /Capture Region selection/ });
 	vi.mocked(GetSelectedRegion).mockResolvedValueOnce(region);
 	const dialog = screen.getByRole("dialog", {
@@ -66,7 +72,7 @@ async function selectRegion(
 	});
 	if (markerDelta.dx !== 0 || markerDelta.dy !== 0) {
 		const marker = within(dialog).getByLabelText(
-			/クリック位置マーカー/,
+			/Advance click point marker/,
 		) as HTMLElement;
 		fireEvent.pointerDown(marker, { clientX: 0, clientY: 0, pointerId: 1 });
 		fireEvent.pointerMove(marker, {
@@ -80,7 +86,7 @@ async function selectRegion(
 			pointerId: 1,
 		});
 	}
-	await user.click(within(dialog).getByRole("button", { name: /確定/ }));
+	await user.click(within(dialog).getByRole("button", { name: /^Set$/ }));
 	await waitFor(() => {
 		expect(
 			screen.queryByRole("dialog", { name: /Capture Region selection/ }),
@@ -112,9 +118,9 @@ beforeEach(() => {
 });
 
 describe("App", () => {
-	it("renders the initial prompt", () => {
-		render(<App />);
-		expect(screen.getByText(/press the button/i)).toBeInTheDocument();
+	it("starts with an empty status line", () => {
+		const { container } = render(<App />);
+		expect(container.querySelector("#result")).toBeEmptyDOMElement();
 	});
 
 	it("shows completion message referring to the chosen output path", async () => {
@@ -126,12 +132,14 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
 		await selectRegion(user);
 
-		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
 		expect(
 			await screen.findByText(/\/tmp\/out\/pasha-2026-06-28_15-30\.pdf/),
@@ -171,9 +179,26 @@ describe("App", () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
+		await user.click(screen.getByRole("button", { name: /folder/i }));
 
-		expect(await screen.findByText("/Users/foo/Documents")).toBeInTheDocument();
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/Users/foo/Documents");
+		});
+	});
+
+	// Without the mark, `direction: rtl` sweeps the leading "/" to the far
+	// right of the field, rendering ".../lua/config/".
+	it("prefixes the output folder path with a left-to-right mark", async () => {
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/Users/foo");
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+
+		await waitFor(() => {
+			const input = screen.getByLabelText(/output folder/i);
+			expect(input).toHaveValue("\u200e/Users/foo");
+		});
 	});
 
 	it("keeps the start button disabled until a folder has been chosen", async () => {
@@ -183,7 +208,7 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
 
 	it("disables the start button when Output File Name is empty", async () => {
@@ -191,13 +216,15 @@ describe("App", () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
 		const fileNameInput = screen.getByLabelText(/file name/i);
 		await user.clear(fileNameInput);
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
 
 	it.each([
@@ -214,7 +241,7 @@ describe("App", () => {
 			await user.type(input, value);
 		}
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
 
 	it.each([
@@ -231,23 +258,23 @@ describe("App", () => {
 			await user.type(input, value);
 		}
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
 
-	it("renders a 範囲選択 (region select) button", () => {
+	it("renders a Set Range button", () => {
 		render(<App />);
 		expect(
-			screen.getByRole("button", { name: /範囲選択/ }),
+			screen.getByRole("button", { name: /Set Range/ }),
 		).toBeInTheDocument();
 	});
 
-	it("shrinks the window and shows the region frame when 範囲選択 is clicked", async () => {
+	it("shrinks the window and shows the region frame when Set Range is clicked", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 
 		expect(await screen.findByRole("dialog")).toBeInTheDocument();
 		await waitFor(() => {
@@ -255,11 +282,11 @@ describe("App", () => {
 		});
 	});
 
-	it("records the region from GetSelectedRegion when 確定 is clicked and restores the window", async () => {
+	it("records the region from GetSelectedRegion when Set is clicked and restores the window", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		await screen.findByRole("dialog");
 
 		vi.mocked(GetSelectedRegion).mockResolvedValueOnce({
@@ -269,23 +296,21 @@ describe("App", () => {
 			height: 320,
 		});
 
-		await user.click(screen.getByRole("button", { name: /確定/ }));
+		await user.click(screen.getByRole("button", { name: /^Set$/ }));
 
 		await waitFor(() => {
 			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		});
 		expect(WindowSetPosition).toHaveBeenLastCalledWith(100, 100);
 		expect(WindowSetSize).toHaveBeenLastCalledWith(800, 600);
-		expect(
-			await screen.findByText(/範囲指定済み.*250.*180.*640.*320/),
-		).toBeInTheDocument();
+		expect(await screen.findByRole("status")).toHaveTextContent(/^✓Set$/);
 	});
 
 	it("cancels region selection when Escape is pressed", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		await screen.findByRole("dialog");
 
 		await user.keyboard("{Escape}");
@@ -295,35 +320,35 @@ describe("App", () => {
 		});
 		expect(WindowSetPosition).toHaveBeenLastCalledWith(100, 100);
 		expect(WindowSetSize).toHaveBeenLastCalledWith(800, 600);
-		expect(screen.queryByText(/範囲指定済み/)).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("Not set");
 	});
 
-	it("cancels region selection when キャンセル button is clicked", async () => {
+	it("cancels region selection when Cancel button is clicked", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		await screen.findByRole("dialog");
 
-		await user.click(screen.getByRole("button", { name: /キャンセル/ }));
+		await user.click(screen.getByRole("button", { name: /Cancel/ }));
 
 		await waitFor(() => {
 			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		});
-		expect(screen.queryByText(/範囲指定済み/)).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("Not set");
 	});
 
 	it("shows an advance click point marker inside the region-selection dialog", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		const dialog = await screen.findByRole("dialog", {
 			name: /Capture Region selection/,
 		});
 
 		expect(
-			within(dialog).getByLabelText(/クリック位置マーカー/),
+			within(dialog).getByLabelText(/Advance click point marker/),
 		).toBeInTheDocument();
 	});
 
@@ -331,12 +356,12 @@ describe("App", () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		const dialog = await screen.findByRole("dialog", {
 			name: /Capture Region selection/,
 		});
 		const marker = within(dialog).getByLabelText(
-			/クリック位置マーカー/,
+			/Advance click point marker/,
 		) as HTMLElement;
 
 		// Region frame is 500x400. Initial marker position is center (250, 200).
@@ -357,15 +382,17 @@ describe("App", () => {
 			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
-		await user.click(screen.getByRole("button", { name: /範囲選択/ }));
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		const dialog = await screen.findByRole("dialog", {
 			name: /Capture Region selection/,
 		});
 		const marker = within(dialog).getByLabelText(
-			/クリック位置マーカー/,
+			/Advance click point marker/,
 		) as HTMLElement;
 
 		// Default marker (250, 200) → drag to (300, 250) via delta +50, +50.
@@ -374,14 +401,14 @@ describe("App", () => {
 		fireEvent.pointerUp(marker, { clientX: 150, clientY: 130, pointerId: 1 });
 
 		// GetSelectedRegion mock returns { x: 10, y: 20, width: 100, height: 50 }.
-		await user.click(within(dialog).getByRole("button", { name: /確定/ }));
+		await user.click(within(dialog).getByRole("button", { name: /^Set$/ }));
 		await waitFor(() => {
 			expect(
 				screen.queryByRole("dialog", { name: /Capture Region selection/ }),
 			).not.toBeInTheDocument();
 		});
 
-		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
 		expect(RunTestSession).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -401,10 +428,12 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
 
 	it("keeps the start button disabled until an advance click point is selected", async () => {
@@ -417,18 +446,18 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
-		expect(screen.getByRole("button", { name: /テスト撮影/ })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 
 		await selectRegion(user);
 
 		// After region confirm, both region and clickPoint are set atomically,
 		// so the button becomes enabled.
-		expect(
-			screen.getByRole("button", { name: /テスト撮影/ }),
-		).not.toBeDisabled();
+		expect(screen.getByRole("button", { name: /Pasha/ })).not.toBeDisabled();
 	});
 
 	it("passes all inputs as a params object to RunTestSession", async () => {
@@ -440,8 +469,10 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
 		const repeatInput = screen.getByLabelText(/repeat count/i);
 		await user.clear(repeatInput);
@@ -463,7 +494,7 @@ describe("App", () => {
 			{ dx: 30, dy: 40 },
 		);
 
-		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
 		expect(RunTestSession).toHaveBeenCalledWith({
 			repeatCount: 7,
@@ -483,15 +514,17 @@ describe("App", () => {
 			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 
 		await selectRegion(user);
 		// Second confirm — marker resets to center each time the dialog opens.
 		// Region (500, 600), marker default (250, 200) → clickPoint (750, 800).
 		await selectRegion(user, { x: 500, y: 600, width: 200, height: 300 });
 
-		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
 		expect(RunTestSession).toHaveBeenLastCalledWith(
 			expect.objectContaining({
@@ -507,10 +540,10 @@ describe("App", () => {
 		expect(bar).toBeInTheDocument();
 		expect(within(bar).getByLabelText(/repeat count/i)).toBeInTheDocument();
 		expect(
-			within(bar).getByRole("button", { name: /範囲選択/ }),
+			within(bar).getByRole("button", { name: /Set Range/ }),
 		).toBeInTheDocument();
 		expect(
-			within(bar).getByRole("button", { name: /テスト撮影/ }),
+			within(bar).getByRole("button", { name: /Pasha/ }),
 		).toBeInTheDocument();
 	});
 
@@ -539,9 +572,9 @@ describe("App", () => {
 		expect(await screen.findByText(/10\s*\/\s*10/)).toBeInTheDocument();
 	});
 
-	it("swaps テスト撮影 for a 停止 button while a session runs and calls StopSession on click", async () => {
+	it("swaps Pasha for a Stop button while a session runs and calls StopSession on click", async () => {
 		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
-		// Keep the session pending so `running` stays true and the 停止 button
+		// Keep the session pending so `running` stays true and the Stop button
 		// remains on screen.
 		let resolveRun: (() => void) | undefined;
 		vi.mocked(RunTestSession).mockImplementationOnce(
@@ -556,15 +589,17 @@ describe("App", () => {
 			const input = screen.getByLabelText(/file name/i) as HTMLInputElement;
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
-		await user.click(screen.getByRole("button", { name: /folder|フォルダ/i }));
-		await screen.findByText("/tmp/out");
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
 		await selectRegion(user);
 
-		await user.click(screen.getByRole("button", { name: /テスト撮影/ }));
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
-		const stopButton = await screen.findByRole("button", { name: /停止/ });
+		const stopButton = await screen.findByRole("button", { name: /Stop/ });
 		expect(
-			screen.queryByRole("button", { name: /テスト撮影/ }),
+			screen.queryByRole("button", { name: /Pasha/ }),
 		).not.toBeInTheDocument();
 
 		await user.click(stopButton);
@@ -573,7 +608,7 @@ describe("App", () => {
 		resolveRun?.();
 	});
 
-	it("shows a 撮影終了 state on the bar when a session:completed event arrives", async () => {
+	it("shows a Finished state on the bar when a session:completed event arrives", async () => {
 		let completedHandler: (() => void) | undefined;
 		vi.mocked(EventsOn).mockImplementation((event, handler) => {
 			if (event === "session:completed") {
@@ -587,7 +622,7 @@ describe("App", () => {
 		expect(completedHandler).toBeDefined();
 		completedHandler?.();
 
-		expect(await screen.findByText(/撮影終了/)).toBeInTheDocument();
+		expect(await screen.findByText(/Finished/)).toBeInTheDocument();
 	});
 
 	it("shows a red inline error on the bar when a session:error event arrives", async () => {
@@ -602,10 +637,10 @@ describe("App", () => {
 		render(<App />);
 
 		expect(errorHandler).toBeDefined();
-		errorHandler?.({ message: "スクリーンキャプチャに失敗しました。" });
+		errorHandler?.({ message: "Screen capture failed." });
 
 		const alert = await screen.findByRole("alert");
-		expect(alert).toHaveTextContent("スクリーンキャプチャに失敗しました。");
+		expect(alert).toHaveTextContent("Screen capture failed.");
 	});
 
 	it("dismisses the error when the close button is clicked", async () => {
@@ -618,9 +653,9 @@ describe("App", () => {
 		});
 		const user = userEvent.setup();
 		render(<App />);
-		errorHandler?.({ message: "PDF の書き込みに失敗しました。" });
+		errorHandler?.({ message: "Could not write the PDF." });
 
-		await user.click(await screen.findByRole("button", { name: /閉じる/ }));
+		await user.click(await screen.findByRole("button", { name: /Dismiss/ }));
 
 		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
@@ -629,10 +664,10 @@ describe("App", () => {
 		const user = userEvent.setup();
 		render(<App />);
 
-		expect(screen.queryByText(/範囲指定済み/)).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("Not set");
 
 		await selectRegion(user);
 
-		expect(await screen.findByText(/範囲指定済み/)).toBeInTheDocument();
+		expect(await screen.findByRole("status")).toHaveTextContent(/^✓Set$/);
 	});
 });
