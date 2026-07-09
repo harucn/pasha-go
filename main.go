@@ -28,12 +28,12 @@ func main() {
 	// then re-locks them on restore.
 	err := wails.Run(&options.App{
 		Title:       "pasha-go",
-		Width:       940,
-		Height:      76,
-		MinWidth:    940,
-		MinHeight:   76,
-		MaxWidth:    940,
-		MaxHeight:   76,
+		Width:       960,
+		Height:      96,
+		MinWidth:    960,
+		MinHeight:   96,
+		MaxWidth:    960,
+		MaxHeight:   96,
 		AlwaysOnTop: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

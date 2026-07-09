@@ -115,10 +115,10 @@ func TestHumanErrorMessage_ClassifiesByOrigin(t *testing.T) {
 		err     error
 		wantSub string
 	}{
-		{"capture", fmt.Errorf("%w: x", session.ErrCapture), "キャプチャ"},
+		{"capture", fmt.Errorf("%w: x", session.ErrCapture), "Screen capture failed"},
 		{"pdf", fmt.Errorf("%w: x", session.ErrPdfWrite), "PDF"},
-		{"click", fmt.Errorf("%w: x", session.ErrClick), "クリック"},
-		{"unknown", errors.New("mystery"), "エラー"},
+		{"click", fmt.Errorf("%w: x", session.ErrClick), "Auto-click failed"},
+		{"unknown", errors.New("mystery"), "Something went wrong"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

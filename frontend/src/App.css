@@ -1,45 +1,23 @@
+:root {
+	--bar-bg: rgba(24, 33, 47, 0.94);
+	--bar-fg: #f5f7fa;
+	--bar-muted: #93a1b5;
+	--bar-line: rgba(255, 255, 255, 0.1);
+	--field-bg: rgba(255, 255, 255, 0.07);
+	--field-bg-hover: rgba(255, 255, 255, 0.12);
+	--accent: #4dc4ff;
+	--accent-ink: #06192e;
+	--danger: #b3261e;
+	--focus: #7dd6ff;
+}
+
 #app {
 	height: 100vh;
 	text-align: center;
 	background-color: transparent;
 }
 
-.input-box .btn {
-	width: 60px;
-	height: 30px;
-	line-height: 30px;
-	border-radius: 3px;
-	border: none;
-	margin: 0 0 0 20px;
-	padding: 0 8px;
-	cursor: pointer;
-}
-
-.input-box .btn:hover {
-	background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-	color: #333333;
-}
-
-.input-box .input {
-	border: none;
-	border-radius: 3px;
-	outline: none;
-	height: 30px;
-	line-height: 30px;
-	padding: 0 10px;
-	background-color: rgba(240, 240, 240, 1);
-	-webkit-font-smoothing: antialiased;
-}
-
-.input-box .input:hover {
-	border: none;
-	background-color: rgba(255, 255, 255, 1);
-}
-
-.input-box .input:focus {
-	border: none;
-	background-color: rgba(255, 255, 255, 1);
-}
+/* ---------- Floating bar shell ---------- */
 
 .floating-bar {
 	position: fixed;
@@ -48,24 +26,32 @@
 	flex-direction: column;
 	align-items: stretch;
 	justify-content: center;
-	/* Reserve ~24px top padding for the native macOS traffic-light buttons
+	/* Reserve ~22px top padding for the native macOS traffic-light buttons
 	   (close / minimize) which are drawn at the top-left. */
-	padding: 24px 12px 6px;
-	background: rgba(27, 38, 54, 0.92);
-	border-radius: 10px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-	color: #f5f7fa;
+	padding: 22px 14px 8px;
+	background: var(--bar-bg);
+	border: 1px solid var(--bar-line);
+	border-radius: 12px;
+	box-shadow:
+		0 10px 30px rgba(0, 0, 0, 0.45),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	color: var(--bar-fg);
 	--wails-draggable: drag;
 	-webkit-app-region: drag;
 	overflow: hidden;
 }
 
+/* ---------- Status line ---------- */
+
 .floating-bar .result {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	height: 16px;
-	line-height: 16px;
-	margin: 0 0 4px;
-	font-size: 0.72em;
-	color: #cfd9df;
+	margin: 0 2px 6px;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: var(--bar-muted);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -74,14 +60,35 @@
 	-webkit-app-region: drag;
 }
 
+.result-spinner {
+	flex: 0 0 auto;
+	width: 9px;
+	height: 9px;
+	border: 1.5px solid rgba(77, 196, 255, 0.3);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.result-spinner {
+		animation: none;
+	}
+}
+
 .floating-bar .result-error {
-	display: flex;
-	align-items: center;
 	justify-content: space-between;
-	gap: 8px;
-	padding: 0 6px;
-	border-radius: 4px;
-	background: #b3261e;
+	height: auto;
+	min-height: 18px;
+	padding: 1px 6px;
+	border-radius: 5px;
+	background: var(--danger);
 	color: #fff;
 	font-weight: 600;
 }
@@ -94,77 +101,247 @@
 .floating-bar .result-error .error-close {
 	flex: 0 0 auto;
 	border: none;
+	border-radius: 3px;
 	background: transparent;
 	color: #fff;
-	font-size: 1.1em;
+	font-size: 13px;
 	line-height: 1;
 	cursor: pointer;
-	padding: 0 2px;
+	padding: 1px 4px;
 	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
 }
 
+.floating-bar .result-error .error-close:hover {
+	background: rgba(255, 255, 255, 0.18);
+}
+
+/* ---------- Toolbar row ---------- */
+
 .floating-bar .input-box {
 	display: flex;
 	flex-direction: row;
-	align-items: center;
-	gap: 8px;
+	align-items: flex-end;
+	gap: 10px;
 	flex-wrap: nowrap;
 	white-space: nowrap;
 	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
 }
 
-.floating-bar .input-box label {
-	font-size: 0.75em;
-	color: #cfd9df;
+/* Each control sits in a field: a micro-label stacked above its input, or a
+   button paired with the value it produces. Stacking the label vertically is
+   what buys back the horizontal room the old single-row layout ran out of. */
+.field {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 3px;
+	min-width: 0;
 }
 
-.floating-bar .input-box .input {
+.field:has(.btn) {
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+}
+
+.field-separator {
+	align-self: stretch;
+	width: 1px;
+	margin: 0 2px;
+	background: var(--bar-line);
+}
+
+.field-spacer {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.input-box label {
+	font-size: 10.5px;
+	font-weight: 600;
+	color: var(--bar-muted);
+	padding-left: 1px;
+}
+
+/* ---------- Inputs ---------- */
+
+.input {
 	height: 26px;
-	line-height: 26px;
-	padding: 0 6px;
-	font-size: 0.85em;
+	padding: 0 8px;
+	font: inherit;
+	font-size: 12px;
+	color: var(--bar-fg);
+	background: var(--field-bg);
+	border: 1px solid transparent;
+	border-radius: 6px;
+	outline: none;
+	-webkit-font-smoothing: antialiased;
+	transition:
+		background 0.12s ease,
+		border-color 0.12s ease;
 }
 
-.floating-bar .input-box .input#repeat-count,
-.floating-bar .input-box .input#step-interval {
-	width: 56px;
+.input:hover {
+	background: var(--field-bg-hover);
 }
 
-.floating-bar .input-box .input#output-file-name {
-	width: 140px;
+.input:focus-visible {
+	background: var(--field-bg-hover);
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px rgba(77, 196, 255, 0.25);
 }
 
-.floating-bar .input-box .btn {
+.input:invalid {
+	border-color: #e5534b;
+}
+
+#repeat-count,
+#step-interval {
+	width: 62px;
+	font-variant-numeric: tabular-nums;
+}
+
+#output-file-name {
+	width: 150px;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
 	height: 26px;
-	line-height: 26px;
 	margin: 0;
-	padding: 0 10px;
-	font-size: 0.8em;
+	padding: 0 12px;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
 	white-space: nowrap;
-	width: auto;
-	min-width: 60px;
+	color: var(--bar-fg);
+	background: var(--field-bg);
+	border: 1px solid var(--bar-line);
+	border-radius: 6px;
+	cursor: pointer;
+	transition:
+		background 0.12s ease,
+		transform 0.06s ease;
 }
 
-.floating-bar .input-box .output-dir,
-.floating-bar .input-box .region-indicator,
-.floating-bar .input-box .click-point-indicator {
-	margin-left: 4px;
-	font-size: 0.72em;
-	color: #cfd9df;
-	max-width: 140px;
+.btn:hover {
+	background: var(--field-bg-hover);
+}
+
+.btn:active {
+	transform: translateY(1px);
+}
+
+.btn:focus-visible,
+.error-close:focus-visible,
+.click-point-marker:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+
+/* Wins over .btn-primary on specificity, so a disabled Pasha drops the accent
+   fill entirely instead of keeping a cyan border around a grey face. */
+.btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	background: var(--field-bg);
+	border-color: var(--bar-line);
+	color: var(--bar-muted);
+	transform: none;
+}
+
+/* The one button the user opened the app to press. Filled accent, so it is
+   the first thing the eye lands on once the bar is ready to run. */
+.btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-ink);
+}
+
+.btn-primary:hover:not(:disabled) {
+	background: #6fd0ff;
+}
+
+/* Stop replaces Pasha in the same slot while a session runs. It is not
+   destructive (the Output Document is still saved), so it gets a warm
+   outline rather than a filled danger button. */
+.btn-stop {
+	background: rgba(229, 83, 75, 0.14);
+	border-color: rgba(229, 83, 75, 0.55);
+	color: #ff9d96;
+}
+
+.btn-stop:hover {
+	background: rgba(229, 83, 75, 0.24);
+	color: #ffb3ad;
+}
+
+/* ---------- Readouts (chosen folder / region / click point) ---------- */
+
+.readout {
+	font-size: 10.5px;
+	line-height: 1.35;
+	color: var(--bar-fg);
+	font-variant-numeric: tabular-nums;
+	max-width: 190px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	text-align: left;
 }
+
+/* Long POSIX paths are more legible truncated from the left. Scoped to the
+   path only: `direction: rtl` reorders neutral characters, which would
+   scramble the parenthesised coordinates in the other readouts. */
+.readout-path {
+	direction: rtl;
+}
+
+.readout-empty {
+	color: var(--bar-muted);
+	font-style: italic;
+}
+
+/* A set/unset state reads faster as a glyph than as a word, so the chip
+   carries the check and the label only names what was set. */
+.status-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 7px;
+	border-radius: 999px;
+	font-size: 10.5px;
+	font-weight: 600;
+	white-space: nowrap;
+	color: var(--bar-muted);
+	background: var(--field-bg);
+	border: 1px solid var(--bar-line);
+}
+
+.status-chip-set {
+	color: #7ee0a8;
+	background: rgba(126, 224, 168, 0.12);
+	border-color: rgba(126, 224, 168, 0.35);
+}
+
+.status-chip-icon {
+	font-size: 11px;
+	line-height: 1;
+}
+
+/* ---------- Region selection overlay ---------- */
 
 .region-frame {
 	position: fixed;
 	inset: 0;
 	background: transparent;
-	border: 3px dashed #4dc4ff;
+	border: 2px dashed var(--accent);
+	border-radius: 4px;
 	box-sizing: border-box;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 	z-index: 9999;
 	--wails-draggable: drag;
 	-webkit-app-region: drag;
@@ -172,36 +349,20 @@
 
 .region-frame-toolbar {
 	position: absolute;
-	top: 12px;
+	top: 14px;
 	left: 50%;
 	transform: translateX(-50%);
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 8px 16px;
-	background: rgba(0, 0, 0, 0.8);
-	border-radius: 8px;
-	color: #fff;
+	gap: 8px;
+	padding: 8px;
+	background: var(--bar-bg);
+	border: 1px solid var(--bar-line);
+	border-radius: 10px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	color: var(--bar-fg);
 	--wails-draggable: no-drag;
 	-webkit-app-region: no-drag;
-}
-
-.region-frame-hint {
-	font-size: 0.8em;
-	max-width: 240px;
-	line-height: 1.3;
-}
-
-.region-frame-toolbar .btn {
-	margin: 0;
-	width: auto;
-	padding: 4px 12px;
-}
-
-.btn-primary {
-	background: #4dc4ff;
-	color: #0a1930;
-	font-weight: bold;
 }
 
 .click-point-marker {
@@ -214,7 +375,9 @@
 	border-radius: 50%;
 	background: #ff4d6d;
 	border: 2px solid #fff;
-	box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+	box-shadow:
+		0 0 0 1px rgba(0, 0, 0, 0.4),
+		0 2px 10px rgba(0, 0, 0, 0.6);
 	cursor: grab;
 	touch-action: none;
 	--wails-draggable: no-drag;
