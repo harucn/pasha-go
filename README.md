@@ -2,6 +2,28 @@
 
 [Wails v2](https://wails.io/) + React + TypeScript で作るデスクトップアプリ。
 
+## インストール（macOS / Apple Silicon）
+
+[Releases](https://github.com/harucn/pasha-go/releases/latest) から
+`pasha-go-darwin-arm64.zip` をダウンロードして展開し、`pasha-go.app` を
+`/Applications` に移動する。
+
+**初回起動時に「開発元を検証できないため開けません」と表示される。**
+アプリに署名・公証（notarization）をしていないため、ダウンロードした
+ファイルに macOS が付ける検疫属性で止められる。以下で属性を外す。
+
+```bash
+xattr -dr com.apple.quarantine /Applications/pasha-go.app
+```
+
+その後は通常どおり起動できる。実行には次の権限が必要で、初回に
+システム設定へ誘導される。
+
+- **画面収録** — Capture Region のキャプチャに使う
+- **アクセシビリティ** — Advance Click Point の自動クリックに使う
+
+Intel Mac 向けのビルドは配布していない。
+
 ## 必要環境
 
 - Go（`.tool-versions`: `golang 1.26.4`）
