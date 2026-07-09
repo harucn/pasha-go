@@ -49,15 +49,15 @@ jobs:
           retention-days: 14
 
       # Artifacts need a signed-in GitHub account to download; a release asset
-      # does not. Tag by date + short SHA so /releases/latest/download stays a
-      # stable URL while every merge keeps its own entry.
+      # does not. A release must have a tag, so `latest` is reused and moved on
+      # every merge: one entry, always the current main.
       - name: Release
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v$(date -u +%Y.%m.%d)-$(git rev-parse --short HEAD)"
-          gh release create "$tag" \
-            --title "$tag" \
-            --generate-notes \
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest \
+            --title latest \
+            --notes "Built from ${{ github.sha }}" \
             pasha-go-darwin-arm64.zip
