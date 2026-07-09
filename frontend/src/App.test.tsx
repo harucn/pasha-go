@@ -127,7 +127,9 @@ describe("App", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		await selectRegion(user);
 
@@ -173,7 +175,11 @@ describe("App", () => {
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
 
-		expect(await screen.findByText("/Users/foo/Documents")).toBeInTheDocument();
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue(
+				"/Users/foo/Documents",
+			);
+		});
 	});
 
 	it("keeps the start button disabled until a folder has been chosen", async () => {
@@ -192,7 +198,9 @@ describe("App", () => {
 		render(<App />);
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		const fileNameInput = screen.getByLabelText(/file name/i);
 		await user.clear(fileNameInput);
@@ -356,7 +364,9 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		const dialog = await screen.findByRole("dialog", {
@@ -400,7 +410,9 @@ describe("App", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 	});
@@ -416,7 +428,9 @@ describe("App", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		expect(screen.getByRole("button", { name: /Pasha/ })).toBeDisabled();
 
@@ -437,7 +451,9 @@ describe("App", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		const repeatInput = screen.getByLabelText(/repeat count/i);
 		await user.clear(repeatInput);
@@ -480,7 +496,9 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 
 		await selectRegion(user);
 		// Second confirm — marker resets to center each time the dialog opens.
@@ -553,7 +571,9 @@ describe("App", () => {
 			expect(input.value).toBe("pasha-2026-06-28_15-30");
 		});
 		await user.click(screen.getByRole("button", { name: /folder/i }));
-		await screen.findByText("/tmp/out");
+		await waitFor(() => {
+			expect(screen.getByLabelText(/output folder/i)).toHaveValue("/tmp/out");
+		});
 		await selectRegion(user);
 
 		await user.click(screen.getByRole("button", { name: /Pasha/ }));

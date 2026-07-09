@@ -281,28 +281,43 @@
 
 /* ---------- Readouts (chosen folder / region / click point) ---------- */
 
-.readout {
+/* Fixed width so the toolbar never reflows as paths of different lengths are
+   chosen. Unfocused, the browser ellipsises the overflow; focused, the caret
+   and arrow keys reach the rest of the text. */
+.path-input {
+	width: 190px;
+	flex: 0 0 190px;
+	height: 26px;
+	padding: 0 8px;
+	font: inherit;
 	font-size: 10.5px;
-	line-height: 1.35;
 	color: var(--bar-fg);
-	font-variant-numeric: tabular-nums;
-	max-width: 190px;
-	overflow: hidden;
+	background: var(--field-bg);
+	border: 1px solid transparent;
+	border-radius: 6px;
+	outline: none;
 	text-overflow: ellipsis;
-	white-space: nowrap;
-	text-align: left;
+	cursor: text;
 }
 
-/* Long POSIX paths are more legible truncated from the left. Scoped to the
-   path only: `direction: rtl` reorders neutral characters, which would
-   scramble the parenthesised coordinates in the other readouts. */
-.readout-path {
-	direction: rtl;
-}
-
-.readout-empty {
+.path-input::placeholder {
 	color: var(--bar-muted);
 	font-style: italic;
+}
+
+.path-input:focus-visible {
+	background: var(--field-bg-hover);
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px rgba(77, 196, 255, 0.25);
+}
+
+/* Long POSIX paths are more legible truncated from the left, so `direction`
+   pushes the ellipsis to the leading edge. `text-align` then pins the text to
+   the left of the box, otherwise a path shorter than the field floats right.
+   Only applied when a path is present, so the placeholder stays plain LTR. */
+.path-input-rtl {
+	direction: rtl;
+	text-align: left;
 }
 
 /* A set/unset state reads faster as a glyph than as a word, so the chip

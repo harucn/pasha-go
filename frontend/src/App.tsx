@@ -334,12 +334,19 @@ function App() {
 							<button type="button" className="btn" onClick={chooseFolder}>
 								Choose Folder
 							</button>
-							<span
-								className={`readout${outputDir ? " readout-path" : " readout-empty"}`}
+							{/* A read-only input rather than a span: it holds a fixed width
+							    and ellipsises while unfocused, yet the user can click into it
+							    and walk the caret through the whole path. A span with
+							    overflow:hidden cannot do the latter. */}
+							<input
+								type="text"
+								readOnly
+								aria-label="Output folder"
+								className={`path-input${outputDir ? " path-input-rtl" : ""}`}
 								title={outputDir || undefined}
-							>
-								{outputDir || "(no folder chosen)"}
-							</span>
+								value={outputDir}
+								placeholder="(no folder chosen)"
+							/>
 						</div>
 
 						<div className="field">
