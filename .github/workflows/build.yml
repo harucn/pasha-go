@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: macOS (arm64)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build
+        run: wails build -platform darwin/arm64
+
+      # upload-artifact does not preserve the executable bit ("all files will
+      # have 644"), which would leave Contents/MacOS/pasha-go unrunnable. tar
+      # keeps the mode, so upload the tarball as-is.
+      - name: Archive app bundle
+        working-directory: build/bin
+        run: tar -cf ../../pasha-go-darwin-arm64.tar pasha-go.app
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pasha-go-darwin-arm64
+          path: pasha-go-darwin-arm64.tar
+          archive: false
+          retention-days: 14
