@@ -14,8 +14,8 @@ export function GetSelectedRegion() {
   return window['go']['main']['App']['GetSelectedRegion']();
 }
 
-export function RunTestSession(arg1) {
-  return window['go']['main']['App']['RunTestSession'](arg1);
+export function RunCaptureSession(arg1) {
+  return window['go']['main']['App']['RunCaptureSession'](arg1);
 }
 
 export function StopSession() {

@@ -125,10 +125,10 @@ func (a *App) GetSelectedRegion() (CaptureRegionInput, error) {
 	return region, nil
 }
 
-// TestSessionParams bundles the frontend-supplied Capture Session inputs.
+// CaptureSessionParams bundles the frontend-supplied Capture Session inputs.
 // Wails auto-generates a matching TypeScript class so the frontend can
 // construct this object directly.
-type TestSessionParams struct {
+type CaptureSessionParams struct {
 	RepeatCount         int                `json:"repeatCount"`
 	StepIntervalSeconds float64            `json:"stepIntervalSeconds"`
 	OutputDir           string             `json:"outputDir"`
@@ -137,7 +137,7 @@ type TestSessionParams struct {
 	AdvanceClickPoint   ClickPointInput    `json:"advanceClickPoint"`
 }
 
-// RunTestSession translates frontend inputs into a Capture Session Plan
+// RunCaptureSession translates frontend inputs into a Capture Session Plan
 // and delegates to the Runner. Both Capture Region and Advance Click
 // Point are supplied by the user via #05 / #06 UI flows and arrive in
 // Screen Space (primary top-left global points).
@@ -147,7 +147,7 @@ type TestSessionParams struct {
 // from params.OutputFileName; the frontend renders this value instead of
 // re-assembling the path. On error the path is empty and Wails rejects the
 // promise, so the frontend never sees it.
-func (a *App) RunTestSession(params TestSessionParams) (string, error) {
+func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 	region := image.Rect(
 		params.CaptureRegion.X,
 		params.CaptureRegion.Y,

@@ -32,7 +32,7 @@ export namespace main {
 	        this.y = source["y"];
 	    }
 	}
-	export class TestSessionParams {
+	export class CaptureSessionParams {
 	    repeatCount: number;
 	    stepIntervalSeconds: number;
 	    outputDir: string;
@@ -41,7 +41,7 @@ export namespace main {
 	    advanceClickPoint: ClickPointInput;
 	
 	    static createFrom(source: any = {}) {
-	        return new TestSessionParams(source);
+	        return new CaptureSessionParams(source);
 	    }
 	
 	    constructor(source: any = {}) {

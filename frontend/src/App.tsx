@@ -10,7 +10,7 @@ import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
 	GetSelectedRegion,
-	RunTestSession,
+	RunCaptureSession,
 	StopSession,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -145,8 +145,8 @@ function App() {
 	// whether the session ran to its Repeat Count or was stopped early; either
 	// way the bar transitions to the finished state.
 	//
-	// The status line is written by runTestSession instead, from the Output
-	// Document path RunTestSession returns. Writing it here too would race:
+	// The status line is written by runCaptureSession instead, from the Output
+	// Document path RunCaptureSession returns. Writing it here too would race:
 	// the arrival order of a Wails event and a resolved binding promise is
 	// not guaranteed.
 	useEffect(() => {
@@ -243,7 +243,7 @@ function App() {
 
 	const outputsValid = outputDir !== "" && outputFileName.trim() !== "";
 
-	async function runTestSession() {
+	async function runCaptureSession() {
 		if (!region || !clickPoint) return;
 		setErrorMessage(null);
 		setRunning(true);
@@ -252,8 +252,8 @@ function App() {
 			// Go owns the Output Document path: it resolves name collisions by
 			// appending "-2", "-3", ..., so the file written may not be the one
 			// we asked for. Render what it returns; never re-assemble it here.
-			const savedPath = await RunTestSession(
-				new main.TestSessionParams({
+			const savedPath = await RunCaptureSession(
+				new main.CaptureSessionParams({
 					repeatCount: parsedRepeatCount,
 					stepIntervalSeconds: parsedStepInterval,
 					outputDir,
@@ -272,7 +272,7 @@ function App() {
 		}
 	}
 
-	function stopTestSession() {
+	function stopCaptureSession() {
 		// Cooperative stop: the current Capture Step finishes, then the loop
 		// ends and the Output Document is saved. The Go side emits
 		// session:completed, which drives the bar to its finished state.
@@ -393,7 +393,7 @@ function App() {
 							<button
 								type="button"
 								className="btn btn-stop"
-								onClick={stopTestSession}
+								onClick={stopCaptureSession}
 							>
 								Stop
 							</button>
@@ -401,7 +401,7 @@ function App() {
 							<button
 								type="button"
 								className="btn btn-primary"
-								onClick={runTestSession}
+								onClick={runCaptureSession}
 								disabled={
 									!repeatCountValid ||
 									!stepIntervalValid ||
