@@ -10,13 +10,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"pasha-go/internal/capturerunner"
 	"pasha-go/internal/session"
 )
 
 type fakeRunner struct {
 	called     bool
-	lastPlan   capturerunner.Plan
+	lastPlan   session.Plan
 	onProgress func(current, total int)
 	outPath    string
 	err        error
@@ -29,7 +28,7 @@ type fakeRunner struct {
 	stopCalled atomic.Bool
 }
 
-func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
+func (f *fakeRunner) Run(_ context.Context, p session.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
 	f.called = true
 	f.lastPlan = p
 	f.onProgress = onProgress

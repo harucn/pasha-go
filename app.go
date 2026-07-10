@@ -11,18 +11,16 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"pasha-go/internal/appwindow"
-	"pasha-go/internal/capturerunner"
 	"pasha-go/internal/clicker"
 	"pasha-go/internal/clock"
 	"pasha-go/internal/screener"
 	"pasha-go/internal/session"
 )
 
-// sessionRunner is the seam through which App delegates Capture Session
-// assembly. In production this is *capturerunner.Runner; tests can
-// substitute a fake.
+// sessionRunner is the seam through which App delegates the Capture Session.
+// In production this is *session.Runner; tests can substitute a fake.
 type sessionRunner interface {
-	Run(ctx context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error)
+	Run(ctx context.Context, p session.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error)
 }
 
 // App is the Wails-bound adapter. It holds the runtime context and a
@@ -41,11 +39,11 @@ type App struct {
 // NewApp constructs the App together with a Runner wired to the real
 // desktop collaborators.
 func NewApp() *App {
-	return newAppWithRunner(capturerunner.New(
+	return newAppWithRunner(session.NewRunner(
 		screener.New(),
 		clicker.New(),
 		clock.New(),
-		capturerunner.DefaultPdfWriterFactory,
+		session.DefaultPdfWriterFactory,
 	))
 }
 
@@ -161,7 +159,7 @@ func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 		ctx = context.Background()
 	}
 
-	outPath, err := a.runner.Run(ctx, capturerunner.Plan{
+	outPath, err := a.runner.Run(ctx, session.Plan{
 		RepeatCount:         params.RepeatCount,
 		StepIntervalSeconds: params.StepIntervalSeconds,
 		CaptureRegion:       region,
