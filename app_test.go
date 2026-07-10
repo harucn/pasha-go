@@ -18,6 +18,7 @@ type fakeRunner struct {
 	called     bool
 	lastPlan   capturerunner.Plan
 	onProgress func(current, total int)
+	outPath    string
 	err        error
 
 	// started, if non-nil, is closed once Run has registered its stop
@@ -28,7 +29,7 @@ type fakeRunner struct {
 	stopCalled atomic.Bool
 }
 
-func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) error {
+func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
 	f.called = true
 	f.lastPlan = p
 	f.onProgress = onProgress
@@ -41,11 +42,14 @@ func (f *fakeRunner) Run(_ context.Context, p capturerunner.Plan, onProgress fun
 	if f.release != nil {
 		<-f.release
 	}
-	return f.err
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.outPath, nil
 }
 
-func validTestSessionParams() TestSessionParams {
-	return TestSessionParams{
+func validCaptureSessionParams() CaptureSessionParams {
+	return CaptureSessionParams{
 		RepeatCount:         1,
 		StepIntervalSeconds: 0.1,
 		OutputDir:           "/tmp",
@@ -65,12 +69,12 @@ func TestDefaultOutputFileName_MatchesTimestampFormat(t *testing.T) {
 	}
 }
 
-func TestRunTestSession_PropagatesCaptureRegionToPlan(t *testing.T) {
+func TestRunCaptureSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	r := &fakeRunner{}
 	app := newAppWithRunner(r)
 
-	if err := app.RunTestSession(validTestSessionParams()); err != nil {
-		t.Fatalf("RunTestSession: %v", err)
+	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
 	}
 
 	if !r.called {
@@ -82,12 +86,12 @@ func TestRunTestSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	}
 }
 
-func TestRunTestSession_SuppliesProgressCallbackToRunner(t *testing.T) {
+func TestRunCaptureSession_SuppliesProgressCallbackToRunner(t *testing.T) {
 	r := &fakeRunner{}
 	app := newAppWithRunner(r)
 
-	if err := app.RunTestSession(validTestSessionParams()); err != nil {
-		t.Fatalf("RunTestSession: %v", err)
+	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
 	}
 
 	if r.onProgress == nil {
@@ -96,6 +100,34 @@ func TestRunTestSession_SuppliesProgressCallbackToRunner(t *testing.T) {
 	// The callback must not panic when the app has no runtime context
 	// (as in unit tests, where startup was never called).
 	r.onProgress(1, 10)
+}
+
+// The Output Document path the Runner resolved must reach the frontend
+// verbatim: it may carry a "-2" collision suffix the caller never asked for.
+func TestRunCaptureSession_ReturnsResolvedOutputDocumentPath(t *testing.T) {
+	r := &fakeRunner{outPath: "/tmp/test-2.pdf"}
+	app := newAppWithRunner(r)
+
+	got, err := app.RunCaptureSession(validCaptureSessionParams())
+	if err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
+	}
+	if want := "/tmp/test-2.pdf"; got != want {
+		t.Errorf("RunCaptureSession() path = %q, want %q", got, want)
+	}
+}
+
+func TestRunCaptureSession_ReturnsEmptyPathOnError(t *testing.T) {
+	r := &fakeRunner{outPath: "/tmp/test.pdf", err: errors.New("boom")}
+	app := newAppWithRunner(r)
+
+	got, err := app.RunCaptureSession(validCaptureSessionParams())
+	if err == nil {
+		t.Fatal("RunCaptureSession: expected error, got nil")
+	}
+	if got != "" {
+		t.Errorf("RunCaptureSession() path = %q on error, want empty", got)
+	}
 }
 
 func TestHumanErrorMessage_ClassifiesByOrigin(t *testing.T) {
@@ -125,7 +157,7 @@ func TestStopSession_StopsActiveSession(t *testing.T) {
 	r := &fakeRunner{started: started, release: release}
 	app := newAppWithRunner(r)
 
-	go func() { _ = app.RunTestSession(validTestSessionParams()) }()
+	go func() { _, _ = app.RunCaptureSession(validCaptureSessionParams()) }()
 	<-started // wait until the session has registered its stop handle
 
 	app.StopSession()
@@ -142,15 +174,15 @@ func TestStopSession_NoActiveSession_IsNoOp(t *testing.T) {
 	app.StopSession()
 }
 
-func TestRunTestSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {
+func TestRunCaptureSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {
 	r := &fakeRunner{}
 	app := newAppWithRunner(r)
 
-	params := validTestSessionParams()
+	params := validCaptureSessionParams()
 	params.AdvanceClickPoint = ClickPointInput{X: 200, Y: 300}
 
-	if err := app.RunTestSession(params); err != nil {
-		t.Fatalf("RunTestSession: %v", err)
+	if _, err := app.RunCaptureSession(params); err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
 	}
 
 	want := image.Pt(200, 300)

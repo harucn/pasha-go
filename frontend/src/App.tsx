@@ -10,7 +10,7 @@ import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
 	GetSelectedRegion,
-	RunTestSession,
+	RunCaptureSession,
 	StopSession,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -144,10 +144,14 @@ function App() {
 	// Subscribe to the Capture Session completion signal (issue #09). Fired
 	// whether the session ran to its Repeat Count or was stopped early; either
 	// way the bar transitions to the finished state.
+	//
+	// The status line is written by runCaptureSession instead, from the Output
+	// Document path RunCaptureSession returns. Writing it here too would race:
+	// the arrival order of a Wails event and a resolved binding promise is
+	// not guaranteed.
 	useEffect(() => {
 		const off = EventsOn("session:completed", () => {
 			setRunning(false);
-			setStatus("Finished");
 		});
 		return off;
 	}, []);
@@ -239,14 +243,17 @@ function App() {
 
 	const outputsValid = outputDir !== "" && outputFileName.trim() !== "";
 
-	async function runTestSession() {
+	async function runCaptureSession() {
 		if (!region || !clickPoint) return;
 		setErrorMessage(null);
 		setRunning(true);
 		setStatus("Running…");
 		try {
-			await RunTestSession(
-				new main.TestSessionParams({
+			// Go owns the Output Document path: it resolves name collisions by
+			// appending "-2", "-3", ..., so the file written may not be the one
+			// we asked for. Render what it returns; never re-assemble it here.
+			const savedPath = await RunCaptureSession(
+				new main.CaptureSessionParams({
 					repeatCount: parsedRepeatCount,
 					stepIntervalSeconds: parsedStepInterval,
 					outputDir,
@@ -255,7 +262,7 @@ function App() {
 					advanceClickPoint: clickPoint,
 				}),
 			);
-			setStatus(`Saved to ${outputDir}/${outputFileName.trim()}.pdf`);
+			setStatus(`Saved to ${savedPath}`);
 		} catch {
 			// The Go side emits a session:error event with a human-readable
 			// message, which drives the red banner; nothing to do here beyond
@@ -265,7 +272,7 @@ function App() {
 		}
 	}
 
-	function stopTestSession() {
+	function stopCaptureSession() {
 		// Cooperative stop: the current Capture Step finishes, then the loop
 		// ends and the Output Document is saved. The Go side emits
 		// session:completed, which drives the bar to its finished state.
@@ -386,7 +393,7 @@ function App() {
 							<button
 								type="button"
 								className="btn btn-stop"
-								onClick={stopTestSession}
+								onClick={stopCaptureSession}
 							>
 								Stop
 							</button>
@@ -394,7 +401,7 @@ function App() {
 							<button
 								type="button"
 								className="btn btn-primary"
-								onClick={runTestSession}
+								onClick={runCaptureSession}
 								disabled={
 									!repeatCountValid ||
 									!stepIntervalValid ||
