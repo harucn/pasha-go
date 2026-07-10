@@ -14,15 +14,9 @@ import {
 	StopSession,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
-import {
-	EventsOn,
-	WindowGetPosition,
-	WindowGetSize,
-	WindowSetMaxSize,
-	WindowSetMinSize,
-	WindowSetPosition,
-	WindowSetSize,
-} from "../wailsjs/runtime/runtime";
+import { EventsOn } from "../wailsjs/runtime/runtime";
+import { createSelectionWindow, frameSize } from "./selectionWindow";
+import { wailsWindowRuntime } from "./wailsWindowRuntime";
 
 type CaptureRegion = {
 	x: number;
@@ -30,9 +24,6 @@ type CaptureRegion = {
 	width: number;
 	height: number;
 };
-
-const REGION_FRAME_WIDTH = 500;
-const REGION_FRAME_HEIGHT = 400;
 
 // Under the field's `direction: rtl`, bidi resolution sweeps a POSIX path's
 // leading "/" to the far right. A LEFT-TO-RIGHT MARK anchors it. Display only.
@@ -58,8 +49,8 @@ function App() {
 		null,
 	);
 	const [markerPos, setMarkerPos] = useState({
-		x: REGION_FRAME_WIDTH / 2,
-		y: REGION_FRAME_HEIGHT / 2,
+		x: frameSize.w / 2,
+		y: frameSize.h / 2,
 	});
 	const dragStartRef = useRef<{
 		startX: number;
@@ -67,10 +58,11 @@ function App() {
 		markerX: number;
 		markerY: number;
 	} | null>(null);
-	const originalWindowRef = useRef<{
-		size: { w: number; h: number };
-		pos: { x: number; y: number };
-	} | null>(null);
+	// One Selection Window per mounted bar; it owns the window geometry the bar
+	// has to get back.
+	const selectionWindow = useRef(
+		createSelectionWindow(wailsWindowRuntime, GetSelection),
+	).current;
 
 	const handleMarkerPointerDown = useCallback(
 		(e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -107,22 +99,10 @@ function App() {
 		[],
 	);
 
-	const restoreWindow = useCallback(() => {
-		const orig = originalWindowRef.current;
-		if (orig) {
-			WindowSetPosition(orig.pos.x, orig.pos.y);
-			WindowSetSize(orig.size.w, orig.size.h);
-			// Re-lock the bar to its original (fixed) dimensions so the user
-			// cannot resize it after returning from Capture Region selection.
-			WindowSetMinSize(orig.size.w, orig.size.h);
-			WindowSetMaxSize(orig.size.w, orig.size.h);
-		}
-	}, []);
-
 	const cancelRegionSelection = useCallback(() => {
-		restoreWindow();
+		selectionWindow.cancel();
 		setSelectingRegion(false);
-	}, [restoreWindow]);
+	}, [selectionWindow]);
 
 	useEffect(() => {
 		DefaultOutputFileName().then(setOutputFileName);
@@ -188,33 +168,21 @@ function App() {
 	}
 
 	async function beginRegionSelection() {
-		const [size, pos] = await Promise.all([
-			WindowGetSize(),
-			WindowGetPosition(),
-		]);
-		originalWindowRef.current = { size, pos };
-		// Relax the size lock so the user can resize the region-selection
-		// window freely. The bar's Min/Max are re-applied in restoreWindow.
-		WindowSetMinSize(200, 150);
-		WindowSetMaxSize(0, 0);
-		WindowSetSize(REGION_FRAME_WIDTH, REGION_FRAME_HEIGHT);
+		await selectionWindow.open();
 		setSelectingRegion(true);
 	}
 
 	async function confirmRegionSelection() {
-		// Go owns Screen Space (ADR-0003). We hand it the marker's offset
-		// inside the frame and take back both coordinates, already converted.
+		// Go owns Screen Space (ADR-0003). We hand the Selection Window the
+		// marker's offset inside the frame and take back both coordinates,
+		// already converted. It restores the bar either way.
 		try {
-			const { region, clickPoint } = await GetSelection(
-				markerPos.x,
-				markerPos.y,
-			);
+			const { region, clickPoint } = await selectionWindow.confirm(markerPos);
 			setRegion(region);
 			setClickPoint(clickPoint);
 		} catch (e) {
 			setStatus(`Failed to read window rect: ${String(e)}`);
 		} finally {
-			restoreWindow();
 			setSelectingRegion(false);
 		}
 	}
