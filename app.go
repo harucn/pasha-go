@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"sync"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -18,27 +17,20 @@ import (
 )
 
 // sessionRunner is the seam through which App delegates the Capture Session.
-// In production this is *session.Runner; tests can substitute a fake.
 type sessionRunner interface {
-	Run(ctx context.Context, p session.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error)
+	Run(ctx context.Context, p session.Plan, onProgress func(current, total int)) (string, error)
+	Stop()
 }
 
-// App is the Wails-bound adapter. It holds the runtime context and a
-// pre-wired Runner; every method delegates its work behind the seam so
-// the adapter itself stays thin.
+// App is the Wails-bound adapter. Every method delegates behind a seam, so the
+// adapter itself holds no state beyond its collaborators.
 type App struct {
 	ctx    context.Context
 	runner sessionRunner
 	events sessionEvents
-
-	// mu guards stop, the cooperative stop handle for the currently
-	// running Capture Session. It is nil whenever no session is in flight.
-	mu   sync.Mutex
-	stop func()
 }
 
-// NewApp constructs the App together with a Runner wired to the real
-// desktop collaborators.
+// NewApp wires the Runner to the real desktop collaborators.
 func NewApp() *App {
 	return newAppWithRunner(noopEvents{}, session.NewRunner(
 		screener.New(),
@@ -48,15 +40,13 @@ func NewApp() *App {
 	))
 }
 
-// newAppWithRunner injects the Runner and the sessionEvents adapter. Kept
-// package-private so tests can substitute fakes without exposing the seams
-// publicly. startup swaps events for the live Wails adapter.
+// newAppWithRunner is package-private so tests can substitute fakes without
+// exposing the seams. startup swaps events for the live Wails adapter.
 func newAppWithRunner(events sessionEvents, r sessionRunner) *App {
 	return &App{runner: r, events: events}
 }
 
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
+// startup runs once the Wails runtime exists.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.events = wailsEvents{ctx: ctx}
@@ -138,16 +128,12 @@ type CaptureSessionParams struct {
 	AdvanceClickPoint   ClickPointInput    `json:"advanceClickPoint"`
 }
 
-// RunCaptureSession translates frontend inputs into a Capture Session Plan
-// and delegates to the Runner. Both Capture Region and Advance Click
-// Point are supplied by the user via #05 / #06 UI flows and arrive in
-// Screen Space (primary top-left global points).
+// RunCaptureSession translates frontend inputs into a Plan. Capture Region and
+// Advance Click Point arrive in Screen Space (ADR-0003).
 //
-// It returns the path of the Output Document that was written. The Runner
-// resolves name collisions by appending "-2", "-3", ..., so this may differ
-// from params.OutputFileName; the frontend renders this value instead of
-// re-assembling the path. On error the path is empty and Wails rejects the
-// promise, so the frontend never sees it.
+// The returned path is collision-resolved and may differ from
+// params.OutputFileName, so the frontend renders it instead of re-assembling
+// its own. On error it is empty and Wails rejects the promise anyway.
 func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 	region := image.Rect(
 		params.CaptureRegion.X,
@@ -169,9 +155,8 @@ func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 		AdvanceClickPoint:   clickPoint,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
-	}, a.events.Progress, a.registerStop)
+	}, a.events.Progress)
 
-	a.clearStop()
 	if err != nil {
 		a.events.Failed(humanErrorMessage(err))
 		return "", err
@@ -180,9 +165,8 @@ func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 	return outPath, nil
 }
 
-// humanErrorMessage translates a Capture Session error into a message the user
-// can act on, keyed by the origin sentinel the session package wraps in. The
-// underlying technical error is intentionally hidden from the user (#11).
+// humanErrorMessage keys off the origin sentinel. The underlying technical
+// error is intentionally hidden from the user (#11).
 func humanErrorMessage(err error) string {
 	switch {
 	case errors.Is(err, session.ErrCapture):
@@ -196,29 +180,8 @@ func humanErrorMessage(err error) string {
 	}
 }
 
-// registerStop stores the stop handle for the in-flight Capture Session so
-// StopSession can end it later. Called by the Runner once the session exists.
-func (a *App) registerStop(stop func()) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.stop = stop
-}
-
-// clearStop drops the stop handle once the session has finished.
-func (a *App) clearStop() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.stop = nil
-}
-
-// StopSession cooperatively stops the running Capture Session: the current
-// Capture Step finishes, then the loop ends and the Output Document is saved
-// (per issue #09 / PRD Q3). It is a no-op when no session is running.
+// StopSession lets the current Capture Step finish, then saves the Output
+// Document (issue #09 / PRD Q3). No-op when no session is running.
 func (a *App) StopSession() {
-	a.mu.Lock()
-	stop := a.stop
-	a.mu.Unlock()
-	if stop != nil {
-		stop()
-	}
+	a.runner.Stop()
 }
