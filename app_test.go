@@ -7,6 +7,7 @@ import (
 	"image"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -47,6 +48,34 @@ func (f *fakeRunner) Run(_ context.Context, p session.Plan, onProgress func(curr
 	return f.outPath, nil
 }
 
+// recordingEvents captures what the user would have been shown, so tests can
+// assert on it. It replaces the old `if a.ctx == nil { return }` guards, which
+// silently disabled the very behaviour under test.
+type recordingEvents struct {
+	mu        sync.Mutex
+	progress  [][2]int
+	completed int
+	failures  []string
+}
+
+func (e *recordingEvents) Progress(current, total int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.progress = append(e.progress, [2]int{current, total})
+}
+
+func (e *recordingEvents) Completed() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.completed++
+}
+
+func (e *recordingEvents) Failed(message string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.failures = append(e.failures, message)
+}
+
 func validCaptureSessionParams() CaptureSessionParams {
 	return CaptureSessionParams{
 		RepeatCount:         1,
@@ -70,7 +99,7 @@ func TestDefaultOutputFileName_MatchesTimestampFormat(t *testing.T) {
 
 func TestRunCaptureSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	r := &fakeRunner{}
-	app := newAppWithRunner(r)
+	app := newAppWithRunner(&recordingEvents{}, r)
 
 	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
 		t.Fatalf("RunCaptureSession: %v", err)
@@ -85,27 +114,11 @@ func TestRunCaptureSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	}
 }
 
-func TestRunCaptureSession_SuppliesProgressCallbackToRunner(t *testing.T) {
-	r := &fakeRunner{}
-	app := newAppWithRunner(r)
-
-	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
-		t.Fatalf("RunCaptureSession: %v", err)
-	}
-
-	if r.onProgress == nil {
-		t.Fatal("Runner.Run received nil onProgress; expected a progress callback")
-	}
-	// The callback must not panic when the app has no runtime context
-	// (as in unit tests, where startup was never called).
-	r.onProgress(1, 10)
-}
-
 // The Output Document path the Runner resolved must reach the frontend
 // verbatim: it may carry a "-2" collision suffix the caller never asked for.
 func TestRunCaptureSession_ReturnsResolvedOutputDocumentPath(t *testing.T) {
 	r := &fakeRunner{outPath: "/tmp/test-2.pdf"}
-	app := newAppWithRunner(r)
+	app := newAppWithRunner(&recordingEvents{}, r)
 
 	got, err := app.RunCaptureSession(validCaptureSessionParams())
 	if err != nil {
@@ -118,7 +131,7 @@ func TestRunCaptureSession_ReturnsResolvedOutputDocumentPath(t *testing.T) {
 
 func TestRunCaptureSession_ReturnsEmptyPathOnError(t *testing.T) {
 	r := &fakeRunner{outPath: "/tmp/test.pdf", err: errors.New("boom")}
-	app := newAppWithRunner(r)
+	app := newAppWithRunner(&recordingEvents{}, r)
 
 	got, err := app.RunCaptureSession(validCaptureSessionParams())
 	if err == nil {
@@ -126,6 +139,73 @@ func TestRunCaptureSession_ReturnsEmptyPathOnError(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("RunCaptureSession() path = %q on error, want empty", got)
+	}
+}
+
+// Until events had a seam, nothing asserted that humanErrorMessage's output
+// ever reached the frontend. It does, on the failure channel, and only there.
+func TestRunCaptureSession_EmitsHumanReadableFailure(t *testing.T) {
+	events := &recordingEvents{}
+	r := &fakeRunner{err: fmt.Errorf("%w: exit status 1", session.ErrCapture)}
+	app := newAppWithRunner(events, r)
+
+	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err == nil {
+		t.Fatal("RunCaptureSession: expected error, got nil")
+	}
+
+	if len(events.failures) != 1 {
+		t.Fatalf("Failed events = %v, want exactly one", events.failures)
+	}
+	if want := "Screen Recording permission"; !strings.Contains(events.failures[0], want) {
+		t.Errorf("Failed(%q), want it to contain %q", events.failures[0], want)
+	}
+	// The underlying technical error must not leak to the user (#11).
+	if strings.Contains(events.failures[0], "exit status 1") {
+		t.Errorf("Failed(%q) leaked the technical error", events.failures[0])
+	}
+	if events.completed != 0 {
+		t.Errorf("Completed fired %d times on a failed session, want 0", events.completed)
+	}
+}
+
+func TestRunCaptureSession_EmitsCompletedOnSuccess(t *testing.T) {
+	events := &recordingEvents{}
+	app := newAppWithRunner(events, &fakeRunner{outPath: "/tmp/test.pdf"})
+
+	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
+	}
+
+	if events.completed != 1 {
+		t.Errorf("Completed fired %d times, want 1", events.completed)
+	}
+	if len(events.failures) != 0 {
+		t.Errorf("Failed fired on a successful session: %v", events.failures)
+	}
+}
+
+// The Runner's progress callback is the events adapter's Progress method, so
+// each Capture Step reaches the frontend.
+func TestRunCaptureSession_ForwardsProgressToEvents(t *testing.T) {
+	events := &recordingEvents{}
+	r := &fakeRunner{}
+	app := newAppWithRunner(events, r)
+
+	if _, err := app.RunCaptureSession(validCaptureSessionParams()); err != nil {
+		t.Fatalf("RunCaptureSession: %v", err)
+	}
+
+	r.onProgress(1, 10)
+	r.onProgress(2, 10)
+
+	want := [][2]int{{1, 10}, {2, 10}}
+	if len(events.progress) != len(want) {
+		t.Fatalf("Progress events = %v, want %v", events.progress, want)
+	}
+	for i := range want {
+		if events.progress[i] != want[i] {
+			t.Errorf("Progress[%d] = %v, want %v", i, events.progress[i], want[i])
+		}
 	}
 }
 
@@ -154,7 +234,7 @@ func TestStopSession_StopsActiveSession(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	r := &fakeRunner{started: started, release: release}
-	app := newAppWithRunner(r)
+	app := newAppWithRunner(&recordingEvents{}, r)
 
 	go func() { _, _ = app.RunCaptureSession(validCaptureSessionParams()) }()
 	<-started // wait until the session has registered its stop handle
@@ -167,7 +247,7 @@ func TestStopSession_StopsActiveSession(t *testing.T) {
 }
 
 func TestStopSession_NoActiveSession_IsNoOp(t *testing.T) {
-	app := newAppWithRunner(&fakeRunner{})
+	app := newAppWithRunner(&recordingEvents{}, &fakeRunner{})
 
 	// Must not panic when nothing is running.
 	app.StopSession()
@@ -175,7 +255,7 @@ func TestStopSession_NoActiveSession_IsNoOp(t *testing.T) {
 
 func TestRunCaptureSession_PropagatesAdvanceClickPointFromParams(t *testing.T) {
 	r := &fakeRunner{}
-	app := newAppWithRunner(r)
+	app := newAppWithRunner(&recordingEvents{}, r)
 
 	params := validCaptureSessionParams()
 	params.AdvanceClickPoint = ClickPointInput{X: 200, Y: 300}
