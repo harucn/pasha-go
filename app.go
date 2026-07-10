@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -76,31 +75,6 @@ func (a *App) ChooseOutputDirectory() (string, error) {
 	})
 }
 
-// CaptureRegionInput carries the user-selected Capture Region in
-// screen coordinates. X/Y is the top-left corner, Width/Height is the
-// size. Sent from the frontend after the drag-selection overlay
-// completes.
-type CaptureRegionInput struct {
-	X      int `json:"x"`
-	Y      int `json:"y"`
-	Width  int `json:"width"`
-	Height int `json:"height"`
-}
-
-// ClickPointInput carries the user-selected Advance Click Point in
-// Screen Space (see docs/adr/0003-canonical-screen-coordinate-space.md).
-type ClickPointInput struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-}
-
-// RegionSelection is what the user picked in the selection window: the
-// Capture Region and, inside it, the Advance Click Point. Both in Screen Space.
-type RegionSelection struct {
-	Region     CaptureRegionInput `json:"region"`
-	ClickPoint ClickPointInput    `json:"clickPoint"`
-}
-
 // GetSelection converts the marker's offset inside the selection window, in
 // CSS pixels from its top-left corner, into the Screen Space selection.
 //
@@ -112,15 +86,7 @@ func (a *App) GetSelection(offsetX, offsetY float64) (RegionSelection, error) {
 	if err != nil {
 		return RegionSelection{}, err
 	}
-	return RegionSelection{
-		Region: CaptureRegionInput{
-			X:      rect.Min.X,
-			Y:      rect.Min.Y,
-			Width:  rect.Dx(),
-			Height: rect.Dy(),
-		},
-		ClickPoint: ClickPointInput{X: point.X, Y: point.Y},
-	}, nil
+	return regionSelectionOf(rect, point), nil
 }
 
 // CaptureSessionParams bundles the frontend-supplied Capture Session inputs.
@@ -142,14 +108,6 @@ type CaptureSessionParams struct {
 // params.OutputFileName, so the frontend renders it instead of re-assembling
 // its own. On error it is empty and Wails rejects the promise anyway.
 func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
-	region := image.Rect(
-		params.CaptureRegion.X,
-		params.CaptureRegion.Y,
-		params.CaptureRegion.X+params.CaptureRegion.Width,
-		params.CaptureRegion.Y+params.CaptureRegion.Height,
-	)
-	clickPoint := image.Pt(params.AdvanceClickPoint.X, params.AdvanceClickPoint.Y)
-
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -158,8 +116,8 @@ func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 	outPath, err := a.runner.Run(ctx, session.Plan{
 		RepeatCount:         params.RepeatCount,
 		StepIntervalSeconds: params.StepIntervalSeconds,
-		CaptureRegion:       region,
-		AdvanceClickPoint:   clickPoint,
+		CaptureRegion:       params.CaptureRegion.rectangle(),
+		AdvanceClickPoint:   params.AdvanceClickPoint.point(),
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
 	}, a.events.Progress)
