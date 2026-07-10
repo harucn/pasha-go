@@ -64,11 +64,6 @@ func (a *App) startup(ctx context.Context) {
 	_ = appwindow.SetTranslucencyMaterial(appwindow.MaterialUnderWindowBackground)
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
-}
-
 // DefaultOutputFileName returns a timestamp-based default file name (without
 // extension) for the Output Document, matching the PRD format:
 // "pasha-YYYY-MM-DD_HH-MM".

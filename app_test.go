@@ -55,17 +55,6 @@ func validTestSessionParams() TestSessionParams {
 	}
 }
 
-func TestGreet(t *testing.T) {
-	app := NewApp()
-
-	got := app.Greet("World")
-	want := "Hello World, It's show time!"
-
-	if got != want {
-		t.Errorf("Greet() = %q, want %q", got, want)
-	}
-}
-
 func TestDefaultOutputFileName_MatchesTimestampFormat(t *testing.T) {
 	app := NewApp()
 
