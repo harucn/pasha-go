@@ -1,6 +1,9 @@
 // Package session orchestrates a Capture Session: a fixed number of
-// Capture Steps that screenshot a Capture Region, append the result to an
-// Output Document, click the Advance Click Point, and wait for Step Interval.
+// Capture Steps that click the Advance Click Point, wait for Step Interval,
+// screenshot a Capture Region, and append the result to an Output Document.
+//
+// Clicking first means the page visible when the session starts is never
+// captured: RepeatCount pages are collected starting one advance ahead.
 //
 // Collaborators (Screener, Clicker, PdfWriter, Clock) are injected as
 // interfaces so this package can be exercised entirely with fakes.
@@ -86,18 +89,18 @@ func (s *CaptureSession) Start(ctx context.Context) (err error) {
 			return ctxErr
 		}
 
+		if err := s.cfg.Clicker.Click(s.cfg.AdvanceClickPoint); err != nil {
+			return fmt.Errorf("%w: %v", ErrClick, err)
+		}
+		if err := s.cfg.Clock.Sleep(ctx, s.cfg.StepInterval); err != nil {
+			return err
+		}
 		img, err := s.cfg.Screener.Capture(s.cfg.CaptureRegion)
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrCapture, err)
 		}
 		if err := s.cfg.PdfWriter.AppendPage(img); err != nil {
 			return fmt.Errorf("%w: %v", ErrPdfWrite, err)
-		}
-		if err := s.cfg.Clicker.Click(s.cfg.AdvanceClickPoint); err != nil {
-			return fmt.Errorf("%w: %v", ErrClick, err)
-		}
-		if err := s.cfg.Clock.Sleep(ctx, s.cfg.StepInterval); err != nil {
-			return err
 		}
 
 		if s.cfg.Progress != nil {

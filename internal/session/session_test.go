@@ -61,7 +61,7 @@ func TestCaptureSession_StepOrder(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	want := []string{"Screener", "AppendPage", "Clicker", "Sleep", "Close"}
+	want := []string{"Clicker", "Sleep", "Screener", "AppendPage", "Close"}
 	got := log.snapshot()
 	if len(got) != len(want) {
 		t.Fatalf("call log = %v, want %v", got, want)
@@ -125,7 +125,7 @@ func TestCaptureSession_ScreenerErrorAborts(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Start: expected error")
 	}
-	if scr.calls != 1 || pdf.appendCalls != 0 || clk.calls != 0 {
+	if scr.calls != 1 || pdf.appendCalls != 0 || clk.calls != 1 {
 		t.Errorf("expected abort after first Capture: scr=%d append=%d clk=%d",
 			scr.calls, pdf.appendCalls, clk.calls)
 	}
@@ -145,7 +145,7 @@ func TestCaptureSession_AppendPageErrorAborts(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Start: expected error")
 	}
-	if scr.calls != 1 || pdf.appendCalls != 1 || clk.calls != 0 {
+	if scr.calls != 1 || pdf.appendCalls != 1 || clk.calls != 1 {
 		t.Errorf("expected abort after AppendPage: scr=%d append=%d clk=%d",
 			scr.calls, pdf.appendCalls, clk.calls)
 	}
@@ -165,7 +165,7 @@ func TestCaptureSession_ClickerErrorAborts(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Start: expected error")
 	}
-	if scr.calls != 1 || pdf.appendCalls != 1 || clk.calls != 1 {
+	if scr.calls != 0 || pdf.appendCalls != 0 || clk.calls != 1 {
 		t.Errorf("expected abort after Click: scr=%d append=%d clk=%d",
 			scr.calls, pdf.appendCalls, clk.calls)
 	}
@@ -243,8 +243,13 @@ func TestCaptureSession_ContextCancelAborts(t *testing.T) {
 	if pdf.closeCalls != 1 {
 		t.Errorf("Close calls = %d, want 1", pdf.closeCalls)
 	}
-	if scr.calls < 1 {
-		t.Errorf("Screener should have been called at least once")
+	// Cancellation lands in the first Sleep, which now precedes the first
+	// Capture, so nothing is ever captured.
+	if scr.calls != 0 {
+		t.Errorf("Screener.Capture = %d, want 0 (cancelled during the first Sleep)", scr.calls)
+	}
+	if clk.calls != 1 {
+		t.Errorf("Clicker.Click = %d, want 1", clk.calls)
 	}
 }
 
