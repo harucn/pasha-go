@@ -2,6 +2,7 @@ package capturerunner_test
 
 import (
 	"context"
+	"errors"
 	"image"
 	"math"
 	"os"
@@ -29,13 +30,14 @@ func (f *fakeScreener) Capture(image.Rectangle) (image.Image, error) {
 type fakeClicker struct {
 	mu    sync.Mutex
 	calls int
+	err   error // when set, every Click fails with it
 }
 
 func (f *fakeClicker) Click(image.Point) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	return nil
+	return f.err
 }
 
 type fakePdfWriter struct {
@@ -96,7 +98,7 @@ func validPlan(dir string) capturerunner.Plan {
 func TestRunner_Run_HappyPath_WiresAllCollaborators(t *testing.T) {
 	r, scr, clk, pdf := newRunnerWithFakes(t)
 
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -122,7 +124,7 @@ func TestRunner_Run_ForwardsProgressPerStep(t *testing.T) {
 		got = append(got, [2]int{current, total})
 	}
 
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress, nil); err != nil {
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -139,7 +141,7 @@ func TestRunner_Run_ForwardsProgressPerStep(t *testing.T) {
 
 func TestRunner_Run_NilProgressIsAllowed(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
-	if err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), nil, nil); err != nil {
 		t.Fatalf("Run with nil progress: %v", err)
 	}
 }
@@ -149,7 +151,7 @@ func TestRunner_Run_RejectsInvalidRepeatCount(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.RepeatCount = repeat
-		if err := r.Run(context.Background(), p, nil, nil); err == nil {
+		if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(RepeatCount=%d): expected error, got nil", repeat)
 		}
 	}
@@ -161,7 +163,7 @@ func TestRunner_Run_RejectsInvalidStepInterval(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.StepIntervalSeconds = sec
-		if err := r.Run(context.Background(), p, nil, nil); err == nil {
+		if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(StepIntervalSeconds=%v): expected error, got nil", sec)
 		}
 	}
@@ -171,7 +173,7 @@ func TestRunner_Run_RejectsEmptyOutputDir(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputDir = ""
-	if err := r.Run(context.Background(), p, nil, nil); err == nil {
+	if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(empty OutputDir): expected error, got nil")
 	}
 }
@@ -180,7 +182,7 @@ func TestRunner_Run_RejectsEmptyOutputFileName(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputFileName = ""
-	if err := r.Run(context.Background(), p, nil, nil); err == nil {
+	if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(empty OutputFileName): expected error, got nil")
 	}
 }
@@ -189,7 +191,7 @@ func TestRunner_Run_RejectsWhitespaceOnlyOutputFileName(t *testing.T) {
 	r, _, _, _ := newRunnerWithFakes(t)
 	p := validPlan(t.TempDir())
 	p.OutputFileName = "   "
-	if err := r.Run(context.Background(), p, nil, nil); err == nil {
+	if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 		t.Error("Run(whitespace-only OutputFileName): expected error, got nil")
 	}
 }
@@ -205,7 +207,7 @@ func TestRunner_Run_RejectsEmptyCaptureRegion(t *testing.T) {
 		r, _, _, _ := newRunnerWithFakes(t)
 		p := validPlan(t.TempDir())
 		p.CaptureRegion = region
-		if err := r.Run(context.Background(), p, nil, nil); err == nil {
+		if _, err := r.Run(context.Background(), p, nil, nil); err == nil {
 			t.Errorf("Run(CaptureRegion=%v): expected error, got nil", region)
 		}
 	}
@@ -219,11 +221,17 @@ func TestRunner_Run_ResolvesCollisionByAppendingSuffix(t *testing.T) {
 	}
 
 	r, _, _, _, lastPath := newRunnerWithFakesCapturingPath(t)
-	if err := r.Run(context.Background(), validPlan(dir), nil, nil); err != nil {
+	got, err := r.Run(context.Background(), validPlan(dir), nil, nil)
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
 	want := filepath.Join(dir, "test-2.pdf")
+	// Run must report the path it actually wrote, not the one requested.
+	// The frontend renders this value verbatim.
+	if got != want {
+		t.Errorf("Run() path = %q, want %q", got, want)
+	}
 	if *lastPath != want {
 		t.Errorf("newPdfWriter path = %q, want %q", *lastPath, want)
 	}
@@ -233,12 +241,48 @@ func TestRunner_Run_UsesDesiredPathWhenNoCollision(t *testing.T) {
 	dir := t.TempDir()
 
 	r, _, _, _, lastPath := newRunnerWithFakesCapturingPath(t)
-	if err := r.Run(context.Background(), validPlan(dir), nil, nil); err != nil {
+	got, err := r.Run(context.Background(), validPlan(dir), nil, nil)
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
 	want := filepath.Join(dir, "test.pdf")
+	if got != want {
+		t.Errorf("Run() path = %q, want %q", got, want)
+	}
 	if *lastPath != want {
 		t.Errorf("newPdfWriter path = %q, want %q", *lastPath, want)
+	}
+}
+
+// The empty path on error is load-bearing: a Capture Session that fails
+// before its first Capture Step writes no file at all, so a caller must
+// never be handed a path it could display.
+func TestRunner_Run_ReturnsEmptyPathOnError(t *testing.T) {
+	dir := t.TempDir()
+
+	r, _, clk, _ := newRunnerWithFakes(t)
+	clk.err = errors.New("accessibility permission denied")
+
+	got, err := r.Run(context.Background(), validPlan(dir), nil, nil)
+	if err == nil {
+		t.Fatal("Run: expected error, got nil")
+	}
+	if got != "" {
+		t.Errorf("Run() path = %q on error, want empty", got)
+	}
+}
+
+func TestRunner_Run_ReturnsEmptyPathOnInvalidPlan(t *testing.T) {
+	r, _, _, _ := newRunnerWithFakes(t)
+	p := validPlan(t.TempDir())
+	p.RepeatCount = 0
+
+	got, err := r.Run(context.Background(), p, nil, nil)
+	if err == nil {
+		t.Fatal("Run: expected error, got nil")
+	}
+	if got != "" {
+		t.Errorf("Run() path = %q on invalid plan, want empty", got)
 	}
 }

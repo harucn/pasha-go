@@ -8,6 +8,6 @@ export function DefaultOutputFileName():Promise<string>;
 
 export function GetSelectedRegion():Promise<main.CaptureRegionInput>;
 
-export function RunTestSession(arg1:main.TestSessionParams):Promise<void>;
+export function RunTestSession(arg1:main.TestSessionParams):Promise<string>;
 
 export function StopSession():Promise<void>;

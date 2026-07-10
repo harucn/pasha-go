@@ -144,10 +144,14 @@ function App() {
 	// Subscribe to the Capture Session completion signal (issue #09). Fired
 	// whether the session ran to its Repeat Count or was stopped early; either
 	// way the bar transitions to the finished state.
+	//
+	// The status line is written by runTestSession instead, from the Output
+	// Document path RunTestSession returns. Writing it here too would race:
+	// the arrival order of a Wails event and a resolved binding promise is
+	// not guaranteed.
 	useEffect(() => {
 		const off = EventsOn("session:completed", () => {
 			setRunning(false);
-			setStatus("Finished");
 		});
 		return off;
 	}, []);
@@ -245,7 +249,10 @@ function App() {
 		setRunning(true);
 		setStatus("Running…");
 		try {
-			await RunTestSession(
+			// Go owns the Output Document path: it resolves name collisions by
+			// appending "-2", "-3", ..., so the file written may not be the one
+			// we asked for. Render what it returns; never re-assemble it here.
+			const savedPath = await RunTestSession(
 				new main.TestSessionParams({
 					repeatCount: parsedRepeatCount,
 					stepIntervalSeconds: parsedStepInterval,
@@ -255,7 +262,7 @@ function App() {
 					advanceClickPoint: clickPoint,
 				}),
 			);
-			setStatus(`Saved to ${outputDir}/${outputFileName.trim()}.pdf`);
+			setStatus(`Saved to ${savedPath}`);
 		} catch {
 			// The Go side emits a session:error event with a human-readable
 			// message, which drives the red banner; nothing to do here beyond

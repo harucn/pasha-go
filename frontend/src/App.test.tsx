@@ -25,7 +25,7 @@ import {
 } from "../wailsjs/runtime/runtime";
 
 vi.mock("../wailsjs/go/main/App", () => ({
-	RunTestSession: vi.fn(() => Promise.resolve()),
+	RunTestSession: vi.fn(() => Promise.resolve("")),
 	StopSession: vi.fn(() => Promise.resolve()),
 	DefaultOutputFileName: vi.fn(() => Promise.resolve("pasha-2026-06-28_15-30")),
 	ChooseOutputDirectory: vi.fn(() => Promise.resolve("")),
@@ -95,7 +95,9 @@ async function selectRegion(
 }
 
 beforeEach(() => {
-	vi.mocked(RunTestSession).mockClear().mockResolvedValue(undefined);
+	vi.mocked(RunTestSession)
+		.mockClear()
+		.mockResolvedValue("/tmp/out/pasha-2026-06-28_15-30.pdf");
 	vi.mocked(StopSession).mockClear().mockResolvedValue(undefined);
 	vi.mocked(ChooseOutputDirectory).mockClear();
 	vi.mocked(DefaultOutputFileName)
@@ -123,8 +125,14 @@ describe("App", () => {
 		expect(container.querySelector("#result")).toBeEmptyDOMElement();
 	});
 
-	it("shows completion message referring to the chosen output path", async () => {
+	// Go resolves Output Document name collisions by appending "-2", so the
+	// path it returns can differ from the file name the user typed. The bar
+	// must show the file that was actually written.
+	it("shows the Output Document path returned by Go, not the requested one", async () => {
 		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
+		vi.mocked(RunTestSession).mockResolvedValueOnce(
+			"/tmp/out/pasha-2026-06-28_15-30-2.pdf",
+		);
 		const user = userEvent.setup();
 		render(<App />);
 		await waitFor(() => {
@@ -142,7 +150,7 @@ describe("App", () => {
 		await user.click(screen.getByRole("button", { name: /Pasha/ }));
 
 		expect(
-			await screen.findByText(/\/tmp\/out\/pasha-2026-06-28_15-30\.pdf/),
+			await screen.findByText("Saved to /tmp/out/pasha-2026-06-28_15-30-2.pdf"),
 		).toBeInTheDocument();
 	});
 
@@ -579,8 +587,8 @@ describe("App", () => {
 		let resolveRun: (() => void) | undefined;
 		vi.mocked(RunTestSession).mockImplementationOnce(
 			() =>
-				new Promise<void>((res) => {
-					resolveRun = () => res();
+				new Promise<string>((res) => {
+					resolveRun = () => res("/tmp/out/pasha-2026-06-28_15-30.pdf");
 				}),
 		);
 		const user = userEvent.setup();
@@ -608,7 +616,10 @@ describe("App", () => {
 		resolveRun?.();
 	});
 
-	it("shows a Finished state on the bar when a session:completed event arrives", async () => {
+	// session:completed only leaves the running state. The status line is
+	// written from the path RunTestSession resolves with, so that the two
+	// never race to describe the same completion.
+	it("leaves the running state when a session:completed event arrives", async () => {
 		let completedHandler: (() => void) | undefined;
 		vi.mocked(EventsOn).mockImplementation((event, handler) => {
 			if (event === "session:completed") {
@@ -616,13 +627,29 @@ describe("App", () => {
 			}
 			return () => {};
 		});
+		// Never resolves: the bar must leave the running state on the event
+		// alone, not because RunTestSession returned.
+		vi.mocked(RunTestSession).mockReturnValueOnce(new Promise(() => {}));
 
+		vi.mocked(ChooseOutputDirectory).mockResolvedValueOnce("/tmp/out");
+		const user = userEvent.setup();
 		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /folder/i }));
+		await waitFor(() => {
+			expect(outputFolderValue()).toBe("/tmp/out");
+		});
+		await selectRegion(user);
+		await user.click(screen.getByRole("button", { name: /Pasha/ }));
+
+		await screen.findByRole("button", { name: /Stop/ });
 
 		expect(completedHandler).toBeDefined();
 		completedHandler?.();
 
-		expect(await screen.findByText(/Finished/)).toBeInTheDocument();
+		expect(
+			await screen.findByRole("button", { name: /Pasha/ }),
+		).toBeInTheDocument();
 	});
 
 	it("shows a red inline error on the bar when a session:error event arrives", async () => {

@@ -87,21 +87,29 @@ func New(scr session.Screener, clk session.Clicker, clock session.Clock, newPdf 
 // Step completes with (completedSteps, totalSteps). onStart, if non-nil, is
 // invoked once with a stop function that cooperatively ends the session after
 // the current Capture Step; callers hold onto it to implement a stop button.
-// It returns the first error encountered.
-func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int), onStart func(stop func())) error {
+//
+// It returns the path of the Output Document that was written, together with
+// the first error encountered. The path is the collision-resolved one, which
+// may differ from the caller's requested file name — callers must render this
+// value rather than re-assembling the path themselves.
+//
+// On error the path is empty. A Capture Session that fails before its first
+// Capture Step never creates a file at all, so there is no path a caller could
+// safely show.
+func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
 	if err := p.validate(); err != nil {
-		return err
+		return "", err
 	}
 
 	desired := filepath.Join(p.OutputDir, p.OutputFileName+".pdf")
 	outPath, err := outputpath.Resolve(desired)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	pdf, err := r.newPdfWriter(outPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	cs := session.New(session.Config{
@@ -118,5 +126,8 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 	if onStart != nil {
 		onStart(cs.Stop)
 	}
-	return cs.Start(ctx)
+	if err := cs.Start(ctx); err != nil {
+		return "", err
+	}
+	return outPath, nil
 }
