@@ -29,6 +29,7 @@ type sessionRunner interface {
 type App struct {
 	ctx    context.Context
 	runner sessionRunner
+	events sessionEvents
 
 	// mu guards stop, the cooperative stop handle for the currently
 	// running Capture Session. It is nil whenever no session is in flight.
@@ -39,7 +40,7 @@ type App struct {
 // NewApp constructs the App together with a Runner wired to the real
 // desktop collaborators.
 func NewApp() *App {
-	return newAppWithRunner(session.NewRunner(
+	return newAppWithRunner(noopEvents{}, session.NewRunner(
 		screener.New(),
 		clicker.New(),
 		clock.New(),
@@ -47,16 +48,18 @@ func NewApp() *App {
 	))
 }
 
-// newAppWithRunner injects the Runner. Kept package-private so tests
-// can substitute a fake without exposing the seam publicly.
-func newAppWithRunner(r sessionRunner) *App {
-	return &App{runner: r}
+// newAppWithRunner injects the Runner and the sessionEvents adapter. Kept
+// package-private so tests can substitute fakes without exposing the seams
+// publicly. startup swaps events for the live Wails adapter.
+func newAppWithRunner(events sessionEvents, r sessionRunner) *App {
+	return &App{runner: r, events: events}
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.events = wailsEvents{ctx: ctx}
 
 	// Best effort: the app works fine on AppKit's default material.
 	_ = appwindow.SetTranslucencyMaterial(appwindow.MaterialUnderWindowBackground)
@@ -166,15 +169,14 @@ func (a *App) RunCaptureSession(params CaptureSessionParams) (string, error) {
 		AdvanceClickPoint:   clickPoint,
 		OutputDir:           params.OutputDir,
 		OutputFileName:      params.OutputFileName,
-	}, a.emitProgress, a.registerStop)
+	}, a.events.Progress, a.registerStop)
 
 	a.clearStop()
-	if err == nil {
-		a.emitCompleted()
-	} else {
-		a.emitError(humanErrorMessage(err))
+	if err != nil {
+		a.events.Failed(humanErrorMessage(err))
 		return "", err
 	}
+	a.events.Completed()
 	return outPath, nil
 }
 
@@ -219,52 +221,4 @@ func (a *App) StopSession() {
 	if stop != nil {
 		stop()
 	}
-}
-
-// SessionProgress is the payload emitted on the "session:progress" event
-// after each Capture Step completes. Wails generates a matching TypeScript
-// type so the frontend can render "Current / Total".
-type SessionProgress struct {
-	Current int `json:"current"`
-	Total   int `json:"total"`
-}
-
-// emitProgress forwards a Capture Session progress tick to the frontend via
-// the Wails runtime. It is a no-op when the runtime context is absent (e.g.
-// in unit tests where startup was never called).
-func (a *App) emitProgress(current, total int) {
-	if a.ctx == nil {
-		return
-	}
-	wailsRuntime.EventsEmit(a.ctx, "session:progress", SessionProgress{
-		Current: current,
-		Total:   total,
-	})
-}
-
-// emitCompleted notifies the frontend that the Capture Session has ended
-// (whether it ran to completion or was stopped), so the UI can transition to
-// the finished state. Same event channel shape as session:progress (#08).
-// No-op when the runtime context is absent (e.g. in unit tests).
-func (a *App) emitCompleted() {
-	if a.ctx == nil {
-		return
-	}
-	wailsRuntime.EventsEmit(a.ctx, "session:completed")
-}
-
-// SessionError is the payload emitted on the "session:error" event when a
-// Capture Session aborts. Message is a user-facing, human-readable string.
-type SessionError struct {
-	Message string `json:"message"`
-}
-
-// emitError notifies the frontend that the Capture Session failed, carrying a
-// human-readable message for the bar's red error display (#11). No-op when the
-// runtime context is absent (e.g. in unit tests).
-func (a *App) emitError(message string) {
-	if a.ctx == nil {
-		return
-	}
-	wailsRuntime.EventsEmit(a.ctx, "session:error", SessionError{Message: message})
 }
