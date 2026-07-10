@@ -94,26 +94,33 @@ type ClickPointInput struct {
 	Y int `json:"y"`
 }
 
-// GetSelectedRegion returns the current main-window rectangle in the
-// coordinate space that the underlying capture library expects.
+// RegionSelection is what the user picked in the selection window: the
+// Capture Region and, inside it, the Advance Click Point. Both in Screen Space.
+type RegionSelection struct {
+	Region     CaptureRegionInput `json:"region"`
+	ClickPoint ClickPointInput    `json:"clickPoint"`
+}
+
+// GetSelection converts the marker's offset inside the selection window, in
+// CSS pixels from its top-left corner, into the Screen Space selection.
 //
-// This exists because Wails' own WindowGetPosition returns *screen-local*
-// coordinates on macOS (relative to the display the window happens to be
-// on), which breaks kbinani/screenshot.Capture on multi-display setups.
-// The cgo helper in internal/appwindow performs the correct conversion
-// via NSApp.mainWindow.frame + CGDisplayBounds(CGMainDisplayID()).
-func (a *App) GetSelectedRegion() (CaptureRegionInput, error) {
-	rect, err := appwindow.GetMainWindowRect()
+// Screen Space never crosses into the frontend as arithmetic (ADR-0003):
+// Wails' own WindowGetPosition returns screen-local coordinates on macOS, so
+// deriving any of this in JS breaks on multi-display setups.
+func (a *App) GetSelection(offsetX, offsetY float64) (RegionSelection, error) {
+	rect, point, err := appwindow.GetSelection(offsetX, offsetY)
 	if err != nil {
-		return CaptureRegionInput{}, err
+		return RegionSelection{}, err
 	}
-	region := CaptureRegionInput{
-		X:      rect.Min.X,
-		Y:      rect.Min.Y,
-		Width:  rect.Dx(),
-		Height: rect.Dy(),
-	}
-	return region, nil
+	return RegionSelection{
+		Region: CaptureRegionInput{
+			X:      rect.Min.X,
+			Y:      rect.Min.Y,
+			Width:  rect.Dx(),
+			Height: rect.Dy(),
+		},
+		ClickPoint: ClickPointInput{X: point.X, Y: point.Y},
+	}, nil
 }
 
 // CaptureSessionParams bundles the frontend-supplied Capture Session inputs.

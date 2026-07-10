@@ -1,6 +1,24 @@
 package appwindow
 
-import "image"
+import (
+	"image"
+	"math"
+)
+
+// advanceClickPointAt turns a marker offset inside the selection window into a
+// Screen Space point.
+//
+// The offset arrives from the DOM in CSS pixels. The window is frameless and
+// the frame fills it, so on macOS a CSS pixel is one logical point and the
+// offset needs no scaling — only rounding, and only here: Screen Space is
+// integral, and nothing outside this package should decide how a fractional
+// pixel lands on it.
+func advanceClickPointAt(region image.Rectangle, offsetX, offsetY float64) image.Point {
+	return image.Pt(
+		region.Min.X+int(math.Round(offsetX)),
+		region.Min.Y+int(math.Round(offsetY)),
+	)
+}
 
 // nsScreenToKbinani converts a window rectangle from macOS NSScreen
 // coordinate space (origin at the bottom-left of the primary display,

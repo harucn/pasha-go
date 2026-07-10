@@ -9,7 +9,7 @@ import {
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
-	GetSelectedRegion,
+	GetSelection,
 	RunCaptureSession,
 	StopSession,
 } from "../wailsjs/go/main/App";
@@ -202,29 +202,15 @@ function App() {
 	}
 
 	async function confirmRegionSelection() {
-		// The Go side reads the real NSWindow frame via cgo/Cocoa and
-		// converts it to the primary-top-left, points coordinate space
-		// that kbinani/screenshot.Capture expects. Doing this in JS via
-		// WindowGetPosition + devicePixelRatio breaks on multi-display:
-		// Wails returns *screen-local* coords, so a window on a secondary
-		// display looks like the same offset on the primary display.
-		//
-		// The advance click point is derived from the marker's position
-		// inside the transparent frame. Because the frame fills the whole
-		// (frameless) window and CSS pixels equal points on macOS, the
-		// screen-space click point is simply region.min + marker offset.
+		// Go owns Screen Space (ADR-0003). We hand it the marker's offset
+		// inside the frame and take back both coordinates, already converted.
 		try {
-			const region = await GetSelectedRegion();
-			setRegion({
-				x: region.x,
-				y: region.y,
-				width: region.width,
-				height: region.height,
-			});
-			setClickPoint({
-				x: region.x + Math.round(markerPos.x),
-				y: region.y + Math.round(markerPos.y),
-			});
+			const { region, clickPoint } = await GetSelection(
+				markerPos.x,
+				markerPos.y,
+			);
+			setRegion(region);
+			setClickPoint(clickPoint);
 		} catch (e) {
 			setStatus(`Failed to read window rect: ${String(e)}`);
 		} finally {

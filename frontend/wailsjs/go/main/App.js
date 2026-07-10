@@ -10,8 +10,8 @@ export function DefaultOutputFileName() {
   return window['go']['main']['App']['DefaultOutputFileName']();
 }
 
-export function GetSelectedRegion() {
-  return window['go']['main']['App']['GetSelectedRegion']();
+export function GetSelection(arg1, arg2) {
+  return window['go']['main']['App']['GetSelection'](arg1, arg2);
 }
 
 export function RunCaptureSession(arg1) {
