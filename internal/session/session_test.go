@@ -13,8 +13,7 @@ import (
 	"pasha-go/internal/session"
 )
 
-// validPlan is the Capture Session Plan every test starts from, overriding
-// only the field it is about. StepIntervalSeconds is 0.01 == 10ms.
+// StepIntervalSeconds 0.01 == the 10ms the fake Clock asserts on.
 func validPlan(dir string) session.Plan {
 	return session.Plan{
 		RepeatCount:         3,
@@ -26,9 +25,7 @@ func validPlan(dir string) session.Plan {
 	}
 }
 
-// runnerWith wires a Runner around the given fakes. The returned pointer
-// captures the path the PdfWriterFactory was asked for, so tests can assert
-// on the resolved Output Document path without touching the real pdfwriter.
+// The returned pointer captures the path the PdfWriterFactory was asked for.
 func runnerWith(scr session.Screener, clk session.Clicker, pdf session.PdfWriter, clock session.Clock) (*session.Runner, *string) {
 	var lastPath string
 	newPdf := func(path string) (session.PdfWriter, error) {
@@ -38,11 +35,10 @@ func runnerWith(scr session.Screener, clk session.Clicker, pdf session.PdfWriter
 	return session.NewRunner(scr, clk, clock, newPdf), &lastPath
 }
 
-// run is the shorthand for the common case: default fakes, no callbacks.
 func run(t *testing.T, p session.Plan, scr *fakeScreener, clk *fakeClicker, pdf *fakePdfWriter, clock *fakeClock) (string, error) {
 	t.Helper()
 	r, _ := runnerWith(scr, clk, pdf, clock)
-	return r.Run(context.Background(), p, nil, nil)
+	return r.Run(context.Background(), p, nil)
 }
 
 func TestRun_HappyPath_RunsRepeatCountSteps(t *testing.T) {
@@ -68,8 +64,6 @@ func TestRun_HappyPath_RunsRepeatCountSteps(t *testing.T) {
 	}
 }
 
-// Clicking precedes capturing, so the page on screen when the session starts
-// is never captured.
 func TestRun_StepOrder(t *testing.T) {
 	log := &callLog{}
 	scr := &fakeScreener{log: log}
@@ -95,7 +89,6 @@ func TestRun_StepOrder(t *testing.T) {
 	}
 }
 
-// Run converts the Plan's StepIntervalSeconds into the Duration the Clock sees.
 func TestRun_SleepsForStepInterval(t *testing.T) {
 	clock := &fakeClock{}
 
@@ -117,14 +110,12 @@ func TestRun_StopFromAnotherGoroutine(t *testing.T) {
 	scr, clk, pdf, clock := &fakeScreener{}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{}
 	r, _ := runnerWith(scr, clk, pdf, clock)
 
-	// onStart hands out the cooperative stop handle before the loop begins;
-	// the fake Clock pulls it during the first Step Interval.
-	var stop func()
-	clock.hook = func(context.Context) { stop() }
+	// The fake Clock stands in for the user pressing Stop mid-session.
+	clock.hook = func(context.Context) { r.Stop() }
 
 	p := validPlan(t.TempDir())
 	p.RepeatCount = 100
-	if _, err := r.Run(context.Background(), p, nil, func(s func()) { stop = s }); err != nil {
+	if _, err := r.Run(context.Background(), p, nil); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -142,17 +133,49 @@ func TestRun_StopStillReturnsOutputDocumentPath(t *testing.T) {
 	clock := &fakeClock{}
 	r, _ := runnerWith(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{}, clock)
 
-	var stop func()
-	clock.hook = func(context.Context) { stop() }
+	clock.hook = func(context.Context) { r.Stop() }
 
 	p := validPlan(dir)
 	p.RepeatCount = 100
-	got, err := r.Run(context.Background(), p, nil, func(s func()) { stop = s })
+	got, err := r.Run(context.Background(), p, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if want := filepath.Join(dir, "test.pdf"); got != want {
 		t.Errorf("Run() path = %q, want %q", got, want)
+	}
+}
+
+// Stop must not arm a pending stop that kills the next session.
+func TestStop_WithNoSessionRunning_IsNoOpAndDoesNotArm(t *testing.T) {
+	scr := &fakeScreener{}
+	r, _ := runnerWith(scr, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{})
+
+	r.Stop() // nothing is in flight
+
+	p := validPlan(t.TempDir())
+	p.RepeatCount = 3
+	if _, err := r.Run(context.Background(), p, nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if scr.calls != 3 {
+		t.Errorf("Screener.Capture = %d, want 3 (an earlier Stop must not affect this session)", scr.calls)
+	}
+}
+
+// Does not pin down that Run released the session: stopping a finished session
+// is unobservable either way.
+func TestStop_AfterRunReturns_IsHarmless(t *testing.T) {
+	scr := &fakeScreener{}
+	r, _ := runnerWith(scr, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{})
+
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	r.Stop() // must not panic
+	if scr.calls != 3 {
+		t.Errorf("Screener.Capture = %d, want 3", scr.calls)
 	}
 }
 
@@ -203,8 +226,7 @@ func TestRun_CollaboratorErrorAborts(t *testing.T) {
 					tt.scr.calls, tt.pdf.appendCalls, tt.clk.calls,
 					tt.wantCaptures, tt.wantAppends, tt.wantClicks)
 			}
-			// The Output Document is always closed, so a crash mid-session
-			// still leaves a valid partial PDF (ADR-0001).
+			// Always closed: a crash still leaves a valid partial PDF (ADR-0001).
 			if tt.pdf.closeCalls != 1 {
 				t.Errorf("Close calls = %d, want 1", tt.pdf.closeCalls)
 			}
@@ -221,7 +243,7 @@ func TestRun_ContextCancelAborts(t *testing.T) {
 
 	p := validPlan(t.TempDir())
 	p.RepeatCount = 100
-	got, err := r.Run(ctx, p, nil, nil)
+	got, err := r.Run(ctx, p, nil)
 	if err == nil {
 		t.Fatal("Run: expected ctx error")
 	}
@@ -231,8 +253,7 @@ func TestRun_ContextCancelAborts(t *testing.T) {
 	if pdf.closeCalls != 1 {
 		t.Errorf("Close calls = %d, want 1", pdf.closeCalls)
 	}
-	// Cancellation lands in the first Sleep, which precedes the first
-	// Capture, so nothing is ever captured.
+	// Cancellation lands in the first Sleep, which precedes the first Capture.
 	if scr.calls != 0 {
 		t.Errorf("Screener.Capture = %d, want 0 (cancelled during the first Sleep)", scr.calls)
 	}
@@ -247,7 +268,7 @@ func TestRun_ProgressCalledPerCompletedStep(t *testing.T) {
 	var got [][2]int
 	onProgress := func(current, total int) { got = append(got, [2]int{current, total}) }
 
-	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress, nil); err != nil {
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -268,7 +289,7 @@ func TestRun_ProgressNotCalledOnAbortedStep(t *testing.T) {
 	var calls int
 	onProgress := func(int, int) { calls++ }
 
-	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress, nil); err == nil {
+	if _, err := r.Run(context.Background(), validPlan(t.TempDir()), onProgress); err == nil {
 		t.Fatal("Run: expected error")
 	}
 	if calls != 0 {
@@ -314,7 +335,7 @@ func TestRun_RejectsInvalidPlan(t *testing.T) {
 			if got != "" {
 				t.Errorf("Run() path = %q on invalid plan, want empty", got)
 			}
-			// An invalid Plan must be rejected before anything touches the screen.
+			// Rejected before anything touches the screen.
 			if clk.calls != 0 || scr.calls != 0 || pdf.appendCalls != 0 {
 				t.Errorf("collaborators ran on an invalid Plan: click=%d capture=%d append=%d",
 					clk.calls, scr.calls, pdf.appendCalls)
@@ -331,13 +352,12 @@ func TestRun_ResolvesCollisionByAppendingSuffix(t *testing.T) {
 	}
 
 	r, lastPath := runnerWith(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{})
-	got, err := r.Run(context.Background(), validPlan(dir), nil, nil)
+	got, err := r.Run(context.Background(), validPlan(dir), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
 	want := filepath.Join(dir, "test-2.pdf")
-	// Run reports the path it actually wrote; the frontend renders it verbatim.
 	if got != want {
 		t.Errorf("Run() path = %q, want %q", got, want)
 	}
@@ -350,7 +370,7 @@ func TestRun_UsesDesiredPathWhenNoCollision(t *testing.T) {
 	dir := t.TempDir()
 
 	r, lastPath := runnerWith(&fakeScreener{}, &fakeClicker{}, &fakePdfWriter{}, &fakeClock{})
-	got, err := r.Run(context.Background(), validPlan(dir), nil, nil)
+	got, err := r.Run(context.Background(), validPlan(dir), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

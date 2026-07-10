@@ -1,18 +1,9 @@
-// Package session runs a Capture Session: a fixed number of Capture Steps
-// that click the Advance Click Point, wait for the Step Interval, screenshot
-// the Capture Region, and append the result to an Output Document.
+// Package session runs a Capture Session. Runner.Run is the only entry point;
+// the step loop behind it is an implementation detail, so the four injected
+// collaborators are the only thing tests need to substitute.
 //
-// Everything between "the user pressed Start" and the finished Output
-// Document lives behind one entry point, Runner.Run: input validation,
-// Step Interval unit conversion, Output Document path collision resolution,
-// PdfWriter construction, and the step loop itself.
-//
-// Clicking first means the page visible when the session starts is never
-// captured: RepeatCount pages are collected starting one advance ahead.
-//
-// The four collaborators (Screener, Clicker, Clock, PdfWriter factory) are
-// injected as interfaces, so the whole path is exercisable with fakes
-// through Run — the only seam callers and tests need.
+// Clicking precedes capturing, so the page visible when the session starts is
+// never captured: RepeatCount pages are collected starting one advance ahead.
 package session
 
 import (
@@ -23,6 +14,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,9 +22,8 @@ import (
 	"pasha-go/internal/pdfwriter"
 )
 
-// Origin sentinels tag a Capture Step failure by the collaborator that
-// produced it, so callers can render a cause-specific message (issue #11).
-// Errors are wrapped with %w, so use errors.Is to test them.
+// Origin sentinels let callers render a cause-specific message (issue #11).
+// Wrapped with %w, so test them with errors.Is.
 var (
 	ErrCapture  = errors.New("screen capture failed")
 	ErrPdfWrite = errors.New("pdf write failed")
@@ -56,9 +47,8 @@ type Clock interface {
 	Sleep(ctx context.Context, d time.Duration) error
 }
 
-// Plan bundles all inputs needed to start a Capture Session. See CONTEXT.md
-// "Capture Session Plan" for the domain definition: it is the snapshot taken
-// the moment the user presses Start, and does not change during the session.
+// Plan is the Capture Session Plan of CONTEXT.md: the snapshot taken when the
+// user presses Start, unchanged for the rest of the session.
 type Plan struct {
 	RepeatCount         int
 	StepIntervalSeconds float64
@@ -87,26 +77,27 @@ func (p Plan) validate() error {
 	return nil
 }
 
-// PdfWriterFactory constructs a PdfWriter that writes to the given resolved
-// output path.
 type PdfWriterFactory func(path string) (PdfWriter, error)
 
-// DefaultPdfWriterFactory adapts pdfwriter.New to the interface expected by
-// the Runner. Wire this in NewApp / production callers.
 func DefaultPdfWriterFactory(path string) (PdfWriter, error) {
 	return pdfwriter.New(path)
 }
 
-// Runner runs Capture Sessions on demand. Collaborators are held once at
-// construction; Plan values arrive per Run call.
+// Runner runs one Capture Session at a time — the constraint the UI already
+// enforces by hiding Start while a session is in flight. Concurrent Runs share
+// one Stop: the most recent Run wins, and Stop ends only that one.
 type Runner struct {
 	screener     Screener
 	clicker      Clicker
 	clock        Clock
 	newPdfWriter PdfWriterFactory
+
+	// mu guards current, which is nil whenever no session is in flight.
+	mu      sync.Mutex
+	current *captureSession
 }
 
-// NewRunner wires a Runner with its collaborators. All four are required.
+// NewRunner takes all four collaborators; none may be nil.
 func NewRunner(scr Screener, clk Clicker, clock Clock, newPdf PdfWriterFactory) *Runner {
 	return &Runner{
 		screener:     scr,
@@ -116,22 +107,15 @@ func NewRunner(scr Screener, clk Clicker, clock Clock, newPdf PdfWriterFactory) 
 	}
 }
 
-// Run validates the Plan, resolves the Output Document path, builds a
-// PdfWriter, and runs RepeatCount Capture Steps sequentially. onProgress, if
-// non-nil, is invoked after each Capture Step completes with (completedSteps,
-// totalSteps). onStart, if non-nil, is invoked once with a stop function that
-// cooperatively ends the session after the current Capture Step; callers hold
-// onto it to implement a stop button.
+// Run blocks until the session ends. onProgress, if non-nil, fires after each
+// completed Capture Step.
 //
-// It returns the path of the Output Document that was written, together with
-// the first error encountered. The path is the collision-resolved one, which
-// may differ from the caller's requested file name — callers must render this
-// value rather than re-assembling the path themselves.
+// The returned path is collision-resolved and may differ from the requested
+// file name, so callers must render it rather than re-assemble their own.
 //
-// On error the path is empty. A Capture Session that fails before its first
-// Capture Step never creates a file at all, so there is no path a caller could
-// safely show.
-func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
+// On error the path is empty: a session that fails before its first Capture
+// Step writes no file, so there is nothing a caller could safely show.
+func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total int)) (string, error) {
 	if err := p.validate(); err != nil {
 		return "", err
 	}
@@ -160,17 +144,39 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 			Progress:          onProgress,
 		},
 	}
-	if onStart != nil {
-		onStart(cs.stop)
-	}
+
+	// Releasing the finished session matters for memory, not for Stop: the
+	// session holds the PdfWriter, which retains every captured page.
+	r.setCurrent(cs)
+	defer r.setCurrent(nil)
+
 	if err := cs.start(ctx); err != nil {
 		return "", err
 	}
 	return outPath, nil
 }
 
-// config is the step loop's own view of a Plan: units converted, collaborators
-// resolved. Unexported — Run is the only way in.
+// Stop ends the running session after its current Capture Step; Run then
+// returns normally with the path it wrote.
+//
+// No-op when nothing is in flight, including the window after Run is called
+// but before the session exists. No Capture Step has run by then.
+func (r *Runner) Stop() {
+	r.mu.Lock()
+	cs := r.current
+	r.mu.Unlock()
+	if cs != nil {
+		cs.stop()
+	}
+}
+
+func (r *Runner) setCurrent(cs *captureSession) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.current = cs
+}
+
+// config is a Plan with units converted and collaborators resolved.
 type config struct {
 	CaptureRegion     image.Rectangle
 	AdvanceClickPoint image.Point
@@ -182,9 +188,7 @@ type config struct {
 	PdfWriter PdfWriter
 	Clock     Clock
 
-	// Progress, if non-nil, is called after each Capture Step completes with
-	// the number of completed steps and the total (RepeatCount). It is not
-	// called for a step that aborts partway (error or cancellation).
+	// Progress is not called for a step that aborts partway.
 	Progress func(current, total int)
 }
 
@@ -193,9 +197,8 @@ type captureSession struct {
 	stopped atomic.Bool
 }
 
-// start runs RepeatCount Capture Steps sequentially. It returns the first
-// error encountered (from any collaborator or context cancellation) and
-// always Closes the PdfWriter before returning.
+// start always Closes the PdfWriter, so a failed session still leaves a valid
+// partial Output Document (ADR-0001).
 func (s *captureSession) start(ctx context.Context) (err error) {
 	defer func() {
 		closeErr := s.cfg.PdfWriter.Close()
@@ -233,7 +236,6 @@ func (s *captureSession) start(ctx context.Context) (err error) {
 	return nil
 }
 
-// stop signals the session to finish after the current Capture Step.
 func (s *captureSession) stop() {
 	s.stopped.Store(true)
 }

@@ -21,21 +21,18 @@ type fakeRunner struct {
 	outPath    string
 	err        error
 
-	// started, if non-nil, is closed once Run has registered its stop
-	// function via onStart; release, if non-nil, blocks Run until closed.
-	// Together they let a test observe an in-flight session.
+	// started, if non-nil, is closed once Run begins; release, if non-nil,
+	// blocks Run until closed. Together they let a test observe an in-flight
+	// session.
 	started    chan struct{}
 	release    chan struct{}
 	stopCalled atomic.Bool
 }
 
-func (f *fakeRunner) Run(_ context.Context, p session.Plan, onProgress func(current, total int), onStart func(stop func())) (string, error) {
+func (f *fakeRunner) Run(_ context.Context, p session.Plan, onProgress func(current, total int)) (string, error) {
 	f.called = true
 	f.lastPlan = p
 	f.onProgress = onProgress
-	if onStart != nil {
-		onStart(func() { f.stopCalled.Store(true) })
-	}
 	if f.started != nil {
 		close(f.started)
 	}
@@ -48,9 +45,9 @@ func (f *fakeRunner) Run(_ context.Context, p session.Plan, onProgress func(curr
 	return f.outPath, nil
 }
 
-// recordingEvents captures what the user would have been shown, so tests can
-// assert on it. It replaces the old `if a.ctx == nil { return }` guards, which
-// silently disabled the very behaviour under test.
+func (f *fakeRunner) Stop() { f.stopCalled.Store(true) }
+
+// recordingEvents captures what the user would have been shown.
 type recordingEvents struct {
 	mu        sync.Mutex
 	progress  [][2]int
@@ -114,8 +111,7 @@ func TestRunCaptureSession_PropagatesCaptureRegionToPlan(t *testing.T) {
 	}
 }
 
-// The Output Document path the Runner resolved must reach the frontend
-// verbatim: it may carry a "-2" collision suffix the caller never asked for.
+// The path may carry a "-2" collision suffix the caller never asked for.
 func TestRunCaptureSession_ReturnsResolvedOutputDocumentPath(t *testing.T) {
 	r := &fakeRunner{outPath: "/tmp/test-2.pdf"}
 	app := newAppWithRunner(&recordingEvents{}, r)
@@ -142,8 +138,6 @@ func TestRunCaptureSession_ReturnsEmptyPathOnError(t *testing.T) {
 	}
 }
 
-// Until events had a seam, nothing asserted that humanErrorMessage's output
-// ever reached the frontend. It does, on the failure channel, and only there.
 func TestRunCaptureSession_EmitsHumanReadableFailure(t *testing.T) {
 	events := &recordingEvents{}
 	r := &fakeRunner{err: fmt.Errorf("%w: exit status 1", session.ErrCapture)}
@@ -159,7 +153,7 @@ func TestRunCaptureSession_EmitsHumanReadableFailure(t *testing.T) {
 	if want := "Screen Recording permission"; !strings.Contains(events.failures[0], want) {
 		t.Errorf("Failed(%q), want it to contain %q", events.failures[0], want)
 	}
-	// The underlying technical error must not leak to the user (#11).
+	// The technical error must not leak to the user (#11).
 	if strings.Contains(events.failures[0], "exit status 1") {
 		t.Errorf("Failed(%q) leaked the technical error", events.failures[0])
 	}
@@ -184,8 +178,6 @@ func TestRunCaptureSession_EmitsCompletedOnSuccess(t *testing.T) {
 	}
 }
 
-// The Runner's progress callback is the events adapter's Progress method, so
-// each Capture Step reaches the frontend.
 func TestRunCaptureSession_ForwardsProgressToEvents(t *testing.T) {
 	events := &recordingEvents{}
 	r := &fakeRunner{}
