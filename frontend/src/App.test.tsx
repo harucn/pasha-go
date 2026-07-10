@@ -10,10 +10,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	ChooseOutputDirectory,
 	DefaultOutputFileName,
-	GetSelectedRegion,
+	GetSelection,
 	RunCaptureSession,
 	StopSession,
 } from "../wailsjs/go/main/App";
+import { main } from "../wailsjs/go/models";
 import {
 	EventsOn,
 	WindowGetPosition,
@@ -29,9 +30,7 @@ vi.mock("../wailsjs/go/main/App", () => ({
 	StopSession: vi.fn(() => Promise.resolve()),
 	DefaultOutputFileName: vi.fn(() => Promise.resolve("pasha-2026-06-28_15-30")),
 	ChooseOutputDirectory: vi.fn(() => Promise.resolve("")),
-	GetSelectedRegion: vi.fn(() =>
-		Promise.resolve({ x: 10, y: 20, width: 100, height: 50 }),
-	),
+	GetSelection: vi.fn(),
 }));
 
 vi.mock("../wailsjs/runtime/runtime", () => ({
@@ -54,11 +53,28 @@ function outputFolderValue(): string {
 	return input.value.replace(/\u200e/g, "");
 }
 
-// selectRegion opens the region-selection dialog, mocks GetSelectedRegion,
-// optionally drags the click-point marker by the given delta (from its
-// initial center at (REGION_FRAME_WIDTH/2, REGION_FRAME_HEIGHT/2) = (250, 200)),
-// and confirms. After this the App state has BOTH region and clickPoint set
-// atomically (clickPoint = region.min + finalMarkerPos).
+// selectionStub mimics Go: it echoes the region and derives the Advance Click
+// Point from the offset it was handed (clickPoint = region.min + offset).
+function selectionStub(region: RegionGeometry) {
+	return (offsetX: number, offsetY: number) =>
+		Promise.resolve(
+			main.RegionSelection.createFrom({
+				region,
+				clickPoint: {
+					x: region.x + Math.round(offsetX),
+					y: region.y + Math.round(offsetY),
+				},
+			}),
+		);
+}
+
+// selectRegion opens the region-selection dialog, optionally drags the
+// click-point marker by the given delta (from its initial center at
+// (REGION_FRAME_WIDTH/2, REGION_FRAME_HEIGHT/2) = (250, 200)), and confirms.
+//
+// The GetSelection stub stands in for Go, which owns the Screen Space
+// arithmetic (clickPoint = region.min + markerOffset) and returns both values
+// together. The frontend only forwards the offset.
 async function selectRegion(
 	user: ReturnType<typeof userEvent.setup>,
 	region: RegionGeometry = { x: 10, y: 20, width: 100, height: 50 },
@@ -66,7 +82,7 @@ async function selectRegion(
 ) {
 	await user.click(screen.getByRole("button", { name: /Set Range/ }));
 	await screen.findByRole("dialog", { name: /Capture Region selection/ });
-	vi.mocked(GetSelectedRegion).mockResolvedValueOnce(region);
+	vi.mocked(GetSelection).mockImplementationOnce(selectionStub(region));
 	const dialog = screen.getByRole("dialog", {
 		name: /Capture Region selection/,
 	});
@@ -103,9 +119,11 @@ beforeEach(() => {
 	vi.mocked(DefaultOutputFileName)
 		.mockClear()
 		.mockResolvedValue("pasha-2026-06-28_15-30");
-	vi.mocked(GetSelectedRegion)
+	vi.mocked(GetSelection)
 		.mockClear()
-		.mockResolvedValue({ x: 10, y: 20, width: 100, height: 50 });
+		.mockImplementation(
+			selectionStub({ x: 10, y: 20, width: 100, height: 50 }),
+		);
 	vi.mocked(WindowSetSize).mockClear();
 	vi.mocked(WindowSetPosition).mockClear();
 	vi.mocked(WindowSetMinSize).mockClear();
@@ -290,19 +308,16 @@ describe("App", () => {
 		});
 	});
 
-	it("records the region from GetSelectedRegion when Set is clicked and restores the window", async () => {
+	it("records the region from GetSelection when Set is clicked and restores the window", async () => {
 		const user = userEvent.setup();
 		render(<App />);
 
 		await user.click(screen.getByRole("button", { name: /Set Range/ }));
 		await screen.findByRole("dialog");
 
-		vi.mocked(GetSelectedRegion).mockResolvedValueOnce({
-			x: 250,
-			y: 180,
-			width: 640,
-			height: 320,
-		});
+		vi.mocked(GetSelection).mockImplementationOnce(
+			selectionStub({ x: 250, y: 180, width: 640, height: 320 }),
+		);
 
 		await user.click(screen.getByRole("button", { name: /^Set$/ }));
 
@@ -312,6 +327,30 @@ describe("App", () => {
 		expect(WindowSetPosition).toHaveBeenLastCalledWith(100, 100);
 		expect(WindowSetSize).toHaveBeenLastCalledWith(800, 600);
 		expect(await screen.findByRole("status")).toHaveTextContent(/^✓Set$/);
+	});
+
+	// The frontend no longer derives the Advance Click Point; it forwards the
+	// marker's offset inside the frame and Go converts it (ADR-0003).
+	it("sends the marker offset to Go rather than computing the click point", async () => {
+		const user = userEvent.setup();
+		render(<App />);
+
+		await user.click(screen.getByRole("button", { name: /Set Range/ }));
+		const dialog = await screen.findByRole("dialog", {
+			name: /Capture Region selection/,
+		});
+		const marker = within(dialog).getByLabelText(
+			/Advance click point marker/,
+		) as HTMLElement;
+
+		// Default marker (250, 200), dragged by +30, +40.
+		fireEvent.pointerDown(marker, { clientX: 0, clientY: 0, pointerId: 1 });
+		fireEvent.pointerMove(marker, { clientX: 30, clientY: 40, pointerId: 1 });
+		fireEvent.pointerUp(marker, { clientX: 30, clientY: 40, pointerId: 1 });
+
+		await user.click(within(dialog).getByRole("button", { name: /^Set$/ }));
+
+		expect(GetSelection).toHaveBeenCalledWith(280, 240);
 	});
 
 	it("cancels region selection when Escape is pressed", async () => {
@@ -408,7 +447,7 @@ describe("App", () => {
 		fireEvent.pointerMove(marker, { clientX: 150, clientY: 130, pointerId: 1 });
 		fireEvent.pointerUp(marker, { clientX: 150, clientY: 130, pointerId: 1 });
 
-		// GetSelectedRegion mock returns { x: 10, y: 20, width: 100, height: 50 }.
+		// The GetSelection stub echoes region.min + marker offset.
 		await user.click(within(dialog).getByRole("button", { name: /^Set$/ }));
 		await waitFor(() => {
 			expect(
@@ -463,8 +502,7 @@ describe("App", () => {
 
 		await selectRegion(user);
 
-		// After region confirm, both region and clickPoint are set atomically,
-		// so the button becomes enabled.
+		// Region and clickPoint arrive together, so the button becomes enabled.
 		expect(screen.getByRole("button", { name: /Pasha/ })).not.toBeDisabled();
 	});
 
@@ -494,8 +532,7 @@ describe("App", () => {
 		await user.clear(fileNameInput);
 		await user.type(fileNameInput, "custom-name");
 
-		// Drag marker +30, +40 → marker at (280, 240). Region at (10, 20).
-		// Expected clickPoint = (10 + 280, 20 + 240) = (290, 260).
+		// Drag marker +30, +40 → offset (280, 240); region at (10, 20).
 		await selectRegion(
 			user,
 			{ x: 10, y: 20, width: 100, height: 50 },
@@ -528,8 +565,7 @@ describe("App", () => {
 		});
 
 		await selectRegion(user);
-		// Second confirm — marker resets to center each time the dialog opens.
-		// Region (500, 600), marker default (250, 200) → clickPoint (750, 800).
+		// Marker resets to center each time the dialog opens.
 		await selectRegion(user, { x: 500, y: 600, width: 200, height: 300 });
 
 		await user.click(screen.getByRole("button", { name: /Pasha/ }));

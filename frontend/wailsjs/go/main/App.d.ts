@@ -6,7 +6,7 @@ export function ChooseOutputDirectory():Promise<string>;
 
 export function DefaultOutputFileName():Promise<string>;
 
-export function GetSelectedRegion():Promise<main.CaptureRegionInput>;
+export function GetSelection(arg1:number,arg2:number):Promise<main.RegionSelection>;
 
 export function RunCaptureSession(arg1:main.CaptureSessionParams):Promise<string>;
 
