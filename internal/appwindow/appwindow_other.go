@@ -12,3 +12,8 @@ import (
 func GetMainWindowRect() (image.Rectangle, error) {
 	return image.Rectangle{}, errors.New("appwindow: not implemented on this platform")
 }
+
+// SetTranslucencyMaterial is a no-op stub on non-darwin builds.
+func SetTranslucencyMaterial(Material) error {
+	return errors.New("appwindow: not implemented on this platform")
+}

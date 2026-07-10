@@ -352,9 +352,8 @@
 .region-frame {
 	position: fixed;
 	inset: 0;
-	/* A faint veil, not a blur: backdrop-filter cannot reach past the window
-	   onto the desktop. Keep it light enough to frame the target through. */
-	background: rgba(24, 33, 47, 0.5);
+	/* The window's NSVisualEffectView already darkens the desktop behind it. */
+	background: transparent;
 	border: 2px dashed var(--accent);
 	border-radius: 4px;
 	box-sizing: border-box;
