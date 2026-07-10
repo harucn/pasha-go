@@ -58,6 +58,12 @@ type Plan struct {
 	OutputFileName      string
 }
 
+// stepInterval converts the Step Interval to the Duration the Clock wants.
+// Only valid Plans convert meaningfully; validate rejects NaN/Inf first.
+func (p Plan) stepInterval() time.Duration {
+	return time.Duration(p.StepIntervalSeconds * float64(time.Second))
+}
+
 func (p Plan) validate() error {
 	if p.RepeatCount < 1 {
 		return fmt.Errorf("repeat count must be >= 1, got %d", p.RepeatCount)
@@ -132,17 +138,10 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 	}
 
 	cs := &captureSession{
-		cfg: config{
-			CaptureRegion:     p.CaptureRegion,
-			AdvanceClickPoint: p.AdvanceClickPoint,
-			RepeatCount:       p.RepeatCount,
-			StepInterval:      time.Duration(p.StepIntervalSeconds * float64(time.Second)),
-			Screener:          r.screener,
-			Clicker:           r.clicker,
-			PdfWriter:         pdf,
-			Clock:             r.clock,
-			Progress:          onProgress,
-		},
+		runner:   r,
+		plan:     p,
+		pdf:      pdf,
+		progress: onProgress,
 	}
 
 	// Releasing the finished session matters for memory, not for Stop: the
@@ -176,24 +175,17 @@ func (r *Runner) setCurrent(cs *captureSession) {
 	r.current = cs
 }
 
-// config is a Plan with units converted and collaborators resolved.
-type config struct {
-	CaptureRegion     image.Rectangle
-	AdvanceClickPoint image.Point
-	RepeatCount       int
-	StepInterval      time.Duration
-
-	Screener  Screener
-	Clicker   Clicker
-	PdfWriter PdfWriter
-	Clock     Clock
-
-	// Progress is not called for a step that aborts partway.
-	Progress func(current, total int)
-}
-
+// captureSession is one in-flight Capture Session: the Plan it was started
+// with, the Runner whose collaborators it drives, and the Output Document it
+// writes into.
 type captureSession struct {
-	cfg     config
+	runner *Runner
+	plan   Plan
+	pdf    PdfWriter
+
+	// progress is not called for a step that aborts partway.
+	progress func(current, total int)
+
 	stopped atomic.Bool
 }
 
@@ -201,13 +193,15 @@ type captureSession struct {
 // partial Output Document (ADR-0001).
 func (s *captureSession) start(ctx context.Context) (err error) {
 	defer func() {
-		closeErr := s.cfg.PdfWriter.Close()
+		closeErr := s.pdf.Close()
 		if err == nil && closeErr != nil {
 			err = fmt.Errorf("%w: %v", ErrPdfWrite, closeErr)
 		}
 	}()
 
-	for i := 0; i < s.cfg.RepeatCount; i++ {
+	interval := s.plan.stepInterval()
+
+	for i := 0; i < s.plan.RepeatCount; i++ {
 		if s.stopped.Load() {
 			return nil
 		}
@@ -215,22 +209,22 @@ func (s *captureSession) start(ctx context.Context) (err error) {
 			return ctxErr
 		}
 
-		if err := s.cfg.Clicker.Click(s.cfg.AdvanceClickPoint); err != nil {
+		if err := s.runner.clicker.Click(s.plan.AdvanceClickPoint); err != nil {
 			return fmt.Errorf("%w: %v", ErrClick, err)
 		}
-		if err := s.cfg.Clock.Sleep(ctx, s.cfg.StepInterval); err != nil {
+		if err := s.runner.clock.Sleep(ctx, interval); err != nil {
 			return err
 		}
-		img, err := s.cfg.Screener.Capture(s.cfg.CaptureRegion)
+		img, err := s.runner.screener.Capture(s.plan.CaptureRegion)
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrCapture, err)
 		}
-		if err := s.cfg.PdfWriter.AppendPage(img); err != nil {
+		if err := s.pdf.AppendPage(img); err != nil {
 			return fmt.Errorf("%w: %v", ErrPdfWrite, err)
 		}
 
-		if s.cfg.Progress != nil {
-			s.cfg.Progress(i+1, s.cfg.RepeatCount)
+		if s.progress != nil {
+			s.progress(i+1, s.plan.RepeatCount)
 		}
 	}
 	return nil
