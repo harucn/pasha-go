@@ -59,6 +59,9 @@ func newAppWithRunner(r sessionRunner) *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Best effort: the app works fine on AppKit's default material.
+	_ = appwindow.SetTranslucencyMaterial(appwindow.MaterialUnderWindowBackground)
 }
 
 // Greet returns a greeting for the given name

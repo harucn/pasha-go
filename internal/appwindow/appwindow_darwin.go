@@ -73,6 +73,31 @@ static RawFrame GetRawWindowFrame(void) {
 
     return r;
 }
+
+// Wails inserts an NSVisualEffectView when WindowIsTranslucent is on
+// (WailsContext.m:185) but never assigns it a material.
+static int SetTranslucencyMaterial(int material) {
+    __block int found = 0;
+
+    void (^work)(void) = ^{
+        for (NSWindow* w in [NSApp windows]) {
+            for (NSView* v in [[w contentView] subviews]) {
+                if ([v isKindOfClass:[NSVisualEffectView class]]) {
+                    [(NSVisualEffectView*)v setMaterial:(NSVisualEffectMaterial)material];
+                    found = 1;
+                }
+            }
+        }
+    };
+
+    if ([NSThread isMainThread]) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+
+    return found;
+}
 */
 import "C"
 
@@ -93,4 +118,13 @@ func GetMainWindowRect() (image.Rectangle, error) {
 		int(r.nsX), int(r.nsY), int(r.nsW), int(r.nsH),
 		int(r.primaryH),
 	), nil
+}
+
+// SetTranslucencyMaterial swaps the material of the NSVisualEffectView behind
+// the webview. Errors if no such view exists, i.e. WindowIsTranslucent is off.
+func SetTranslucencyMaterial(m Material) error {
+	if C.SetTranslucencyMaterial(C.int(m)) == 0 {
+		return errors.New("appwindow: no NSVisualEffectView behind the webview")
+	}
+	return nil
 }
