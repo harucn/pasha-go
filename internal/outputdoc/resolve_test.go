@@ -1,18 +1,16 @@
-package outputpath_test
+package outputdoc
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"pasha-go/internal/outputpath"
 )
 
 func TestResolve_ReturnsPathWhenNotExisting(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "pasha-2026-06-28_15-30.pdf")
 
-	got, err := outputpath.Resolve(target)
+	got, err := resolve(target)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -26,7 +24,7 @@ func TestResolve_AppendsDash2WhenPathExists(t *testing.T) {
 	target := filepath.Join(dir, "pasha.pdf")
 	mustCreate(t, target)
 
-	got, err := outputpath.Resolve(target)
+	got, err := resolve(target)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -42,7 +40,7 @@ func TestResolve_AppendsDash3WhenDash2AlsoExists(t *testing.T) {
 	mustCreate(t, target)
 	mustCreate(t, filepath.Join(dir, "pasha-2.pdf"))
 
-	got, err := outputpath.Resolve(target)
+	got, err := resolve(target)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -57,7 +55,7 @@ func TestResolve_PreservesExtensionCorrectly(t *testing.T) {
 	target := filepath.Join(dir, "no-ext")
 	mustCreate(t, target)
 
-	got, err := outputpath.Resolve(target)
+	got, err := resolve(target)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

@@ -36,7 +36,7 @@ func NewApp() *App {
 		screener.New(),
 		clicker.New(),
 		clock.New(),
-		session.DefaultPdfWriterFactory,
+		session.DefaultOutputDocument,
 	))
 }
 

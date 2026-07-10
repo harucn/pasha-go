@@ -1,16 +1,13 @@
-package pdfwriter_test
+package outputdoc
 
 import (
 	"image"
 	"image/color"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"testing"
-
-	"pasha-go/internal/pdfwriter"
 )
 
 func newSolidImage(w, h int, c color.Color) image.Image {
@@ -23,14 +20,13 @@ func newSolidImage(w, h int, c color.Color) image.Image {
 	return img
 }
 
-func TestWriter_PageMatchesImageAspectRatio(t *testing.T) {
+func TestDocument_PageMatchesImageAspectRatio(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "out.pdf")
-
-	w, err := pdfwriter.New(path)
+	w, err := Create(dir, "out")
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
+	path := w.Path()
 	if err := w.AppendPage(newSolidImage(200, 100, color.RGBA{R: 255, A: 255})); err != nil {
 		t.Fatalf("AppendPage: %v", err)
 	}
@@ -59,14 +55,13 @@ func TestWriter_PageMatchesImageAspectRatio(t *testing.T) {
 	}
 }
 
-func TestWriter_AppendPagesAndClose_ProducesPdf(t *testing.T) {
+func TestDocument_AppendPagesAndClose_ProducesPdf(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "out.pdf")
-
-	w, err := pdfwriter.New(path)
+	w, err := Create(dir, "out")
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
+	path := w.Path()
 
 	for i := 0; i < 3; i++ {
 		if err := w.AppendPage(newSolidImage(200, 100, color.RGBA{R: 255, A: 255})); err != nil {
@@ -115,14 +110,13 @@ func countPdfPages(data []byte) int {
 	return count
 }
 
-func TestWriter_PartialPdfExistsBeforeClose(t *testing.T) {
+func TestDocument_PartialPdfExistsBeforeClose(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "partial.pdf")
-
-	w, err := pdfwriter.New(path)
+	w, err := Create(dir, "partial")
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
+	path := w.Path()
 	t.Cleanup(func() { _ = w.Close() })
 
 	if err := w.AppendPage(newSolidImage(100, 100, color.RGBA{B: 255, A: 255})); err != nil {

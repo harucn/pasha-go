@@ -22,33 +22,65 @@ const (
 	moveTolerance = 1
 )
 
-type Clicker struct{}
+// mouse is the seam over robotgo's package-level functions. The settle loop
+// below is the only non-trivial logic in this package and misbehaving there
+// makes the app click its own bar, so it must be reachable from a test
+// without a real cursor.
+type mouse interface {
+	Move(p image.Point)
+	Location() image.Point
+	Click() error
+}
 
-func New() *Clicker { return &Clicker{} }
+type robotgoMouse struct{}
 
-// Click moves the mouse to p (screen coordinates) and emits a left click.
+func (robotgoMouse) Move(p image.Point) { robotgo.Move(p.X, p.Y) }
+
+func (robotgoMouse) Location() image.Point {
+	x, y := robotgo.Location()
+	return image.Pt(x, y)
+}
+
+func (robotgoMouse) Click() error { return robotgo.Click("left", false) }
+
+type Clicker struct {
+	mouse         mouse
+	settleTimeout time.Duration
+	pollInterval  time.Duration
+	tolerance     int
+}
+
+func New() *Clicker {
+	return &Clicker{
+		mouse:         robotgoMouse{},
+		settleTimeout: moveSettleTimeout,
+		pollInterval:  movePollInterval,
+		tolerance:     moveTolerance,
+	}
+}
+
+// Click moves the mouse to p (Screen Space) and emits a left click.
 // It fails rather than clicking at the wrong place if the cursor never
 // arrives at p.
 func (c *Clicker) Click(p image.Point) error {
-	robotgo.Move(p.X, p.Y)
-	if err := waitForCursor(p); err != nil {
+	c.mouse.Move(p)
+	if err := c.waitForCursor(p); err != nil {
 		return err
 	}
-	return robotgo.Click("left", false)
+	return c.mouse.Click()
 }
 
-func waitForCursor(want image.Point) error {
-	deadline := time.Now().Add(moveSettleTimeout)
-	var x, y int
+func (c *Clicker) waitForCursor(want image.Point) error {
+	deadline := time.Now().Add(c.settleTimeout)
 	for {
-		x, y = robotgo.Location()
-		if abs(x-want.X) <= moveTolerance && abs(y-want.Y) <= moveTolerance {
+		got := c.mouse.Location()
+		if abs(got.X-want.X) <= c.tolerance && abs(got.Y-want.Y) <= c.tolerance {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("cursor did not reach (%d,%d), stalled at (%d,%d)", want.X, want.Y, x, y)
+			return fmt.Errorf("cursor did not reach (%d,%d), stalled at (%d,%d)", want.X, want.Y, got.X, got.Y)
 		}
-		time.Sleep(movePollInterval)
+		time.Sleep(c.pollInterval)
 	}
 }
 

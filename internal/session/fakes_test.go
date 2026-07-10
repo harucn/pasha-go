@@ -50,8 +50,9 @@ func (f *fakeClicker) Click(p image.Point) error {
 	return f.err
 }
 
-type fakePdfWriter struct {
+type fakeDocument struct {
 	mu          sync.Mutex
+	path        string
 	appendCalls int
 	closeCalls  int
 	appendErr   error
@@ -59,7 +60,9 @@ type fakePdfWriter struct {
 	log         *callLog
 }
 
-func (f *fakePdfWriter) AppendPage(img image.Image) error {
+func (f *fakeDocument) Path() string { return f.path }
+
+func (f *fakeDocument) AppendPage(img image.Image) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.appendCalls++
@@ -69,7 +72,7 @@ func (f *fakePdfWriter) AppendPage(img image.Image) error {
 	return f.appendErr
 }
 
-func (f *fakePdfWriter) Close() error {
+func (f *fakeDocument) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closeCalls++

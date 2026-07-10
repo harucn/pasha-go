@@ -12,14 +12,12 @@ import (
 	"fmt"
 	"image"
 	"math"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"pasha-go/internal/outputpath"
-	"pasha-go/internal/pdfwriter"
+	"pasha-go/internal/outputdoc"
 )
 
 // Origin sentinels let callers render a cause-specific message (issue #11).
@@ -38,7 +36,10 @@ type Clicker interface {
 	Click(p image.Point) error
 }
 
-type PdfWriter interface {
+// OutputDocument is the multi-page PDF the session appends to. It knows the
+// path it landed on; the Runner never spells one.
+type OutputDocument interface {
+	Path() string
 	AppendPage(img image.Image) error
 	Close() error
 }
@@ -56,6 +57,12 @@ type Plan struct {
 	AdvanceClickPoint   image.Point
 	OutputDir           string
 	OutputFileName      string
+}
+
+// stepInterval converts the Step Interval to the Duration the Clock wants.
+// Only valid Plans convert meaningfully; validate rejects NaN/Inf first.
+func (p Plan) stepInterval() time.Duration {
+	return time.Duration(p.StepIntervalSeconds * float64(time.Second))
 }
 
 func (p Plan) validate() error {
@@ -77,20 +84,22 @@ func (p Plan) validate() error {
 	return nil
 }
 
-type PdfWriterFactory func(path string) (PdfWriter, error)
+// OpenOutputDocument creates the Output Document a session writes into.
+// Substituted in tests; DefaultOutputDocument is the only real adapter.
+type OpenOutputDocument func(dir, fileName string) (OutputDocument, error)
 
-func DefaultPdfWriterFactory(path string) (PdfWriter, error) {
-	return pdfwriter.New(path)
+func DefaultOutputDocument(dir, fileName string) (OutputDocument, error) {
+	return outputdoc.Create(dir, fileName)
 }
 
 // Runner runs one Capture Session at a time — the constraint the UI already
 // enforces by hiding Start while a session is in flight. Concurrent Runs share
 // one Stop: the most recent Run wins, and Stop ends only that one.
 type Runner struct {
-	screener     Screener
-	clicker      Clicker
-	clock        Clock
-	newPdfWriter PdfWriterFactory
+	screener Screener
+	clicker  Clicker
+	clock    Clock
+	openDoc  OpenOutputDocument
 
 	// mu guards current, which is nil whenever no session is in flight.
 	mu      sync.Mutex
@@ -98,20 +107,21 @@ type Runner struct {
 }
 
 // NewRunner takes all four collaborators; none may be nil.
-func NewRunner(scr Screener, clk Clicker, clock Clock, newPdf PdfWriterFactory) *Runner {
+func NewRunner(scr Screener, clk Clicker, clock Clock, openDoc OpenOutputDocument) *Runner {
 	return &Runner{
-		screener:     scr,
-		clicker:      clk,
-		clock:        clock,
-		newPdfWriter: newPdf,
+		screener: scr,
+		clicker:  clk,
+		clock:    clock,
+		openDoc:  openDoc,
 	}
 }
 
 // Run blocks until the session ends. onProgress, if non-nil, fires after each
 // completed Capture Step.
 //
-// The returned path is collision-resolved and may differ from the requested
-// file name, so callers must render it rather than re-assemble their own.
+// The returned path is wherever the Output Document landed, which may differ
+// from the requested file name, so callers must render it rather than
+// re-assemble their own.
 //
 // On error the path is empty: a session that fails before its first Capture
 // Step writes no file, so there is nothing a caller could safely show.
@@ -120,29 +130,16 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 		return "", err
 	}
 
-	desired := filepath.Join(p.OutputDir, p.OutputFileName+".pdf")
-	outPath, err := outputpath.Resolve(desired)
-	if err != nil {
-		return "", err
-	}
-
-	pdf, err := r.newPdfWriter(outPath)
+	doc, err := r.openDoc(p.OutputDir, p.OutputFileName)
 	if err != nil {
 		return "", err
 	}
 
 	cs := &captureSession{
-		cfg: config{
-			CaptureRegion:     p.CaptureRegion,
-			AdvanceClickPoint: p.AdvanceClickPoint,
-			RepeatCount:       p.RepeatCount,
-			StepInterval:      time.Duration(p.StepIntervalSeconds * float64(time.Second)),
-			Screener:          r.screener,
-			Clicker:           r.clicker,
-			PdfWriter:         pdf,
-			Clock:             r.clock,
-			Progress:          onProgress,
-		},
+		runner:   r,
+		plan:     p,
+		doc:      doc,
+		progress: onProgress,
 	}
 
 	// Releasing the finished session matters for memory, not for Stop: the
@@ -153,7 +150,7 @@ func (r *Runner) Run(ctx context.Context, p Plan, onProgress func(current, total
 	if err := cs.start(ctx); err != nil {
 		return "", err
 	}
-	return outPath, nil
+	return doc.Path(), nil
 }
 
 // Stop ends the running session after its current Capture Step; Run then
@@ -176,38 +173,33 @@ func (r *Runner) setCurrent(cs *captureSession) {
 	r.current = cs
 }
 
-// config is a Plan with units converted and collaborators resolved.
-type config struct {
-	CaptureRegion     image.Rectangle
-	AdvanceClickPoint image.Point
-	RepeatCount       int
-	StepInterval      time.Duration
-
-	Screener  Screener
-	Clicker   Clicker
-	PdfWriter PdfWriter
-	Clock     Clock
-
-	// Progress is not called for a step that aborts partway.
-	Progress func(current, total int)
-}
-
+// captureSession is one in-flight Capture Session: the Plan it was started
+// with, the Runner whose collaborators it drives, and the Output Document it
+// writes into.
 type captureSession struct {
-	cfg     config
+	runner *Runner
+	plan   Plan
+	doc    OutputDocument
+
+	// progress is not called for a step that aborts partway.
+	progress func(current, total int)
+
 	stopped atomic.Bool
 }
 
-// start always Closes the PdfWriter, so a failed session still leaves a valid
-// partial Output Document (ADR-0001).
+// start always Closes the Output Document, so a failed session still leaves a
+// valid partial PDF (ADR-0001).
 func (s *captureSession) start(ctx context.Context) (err error) {
 	defer func() {
-		closeErr := s.cfg.PdfWriter.Close()
+		closeErr := s.doc.Close()
 		if err == nil && closeErr != nil {
 			err = fmt.Errorf("%w: %v", ErrPdfWrite, closeErr)
 		}
 	}()
 
-	for i := 0; i < s.cfg.RepeatCount; i++ {
+	interval := s.plan.stepInterval()
+
+	for i := 0; i < s.plan.RepeatCount; i++ {
 		if s.stopped.Load() {
 			return nil
 		}
@@ -215,22 +207,22 @@ func (s *captureSession) start(ctx context.Context) (err error) {
 			return ctxErr
 		}
 
-		if err := s.cfg.Clicker.Click(s.cfg.AdvanceClickPoint); err != nil {
+		if err := s.runner.clicker.Click(s.plan.AdvanceClickPoint); err != nil {
 			return fmt.Errorf("%w: %v", ErrClick, err)
 		}
-		if err := s.cfg.Clock.Sleep(ctx, s.cfg.StepInterval); err != nil {
+		if err := s.runner.clock.Sleep(ctx, interval); err != nil {
 			return err
 		}
-		img, err := s.cfg.Screener.Capture(s.cfg.CaptureRegion)
+		img, err := s.runner.screener.Capture(s.plan.CaptureRegion)
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrCapture, err)
 		}
-		if err := s.cfg.PdfWriter.AppendPage(img); err != nil {
+		if err := s.doc.AppendPage(img); err != nil {
 			return fmt.Errorf("%w: %v", ErrPdfWrite, err)
 		}
 
-		if s.cfg.Progress != nil {
-			s.cfg.Progress(i+1, s.cfg.RepeatCount)
+		if s.progress != nil {
+			s.progress(i+1, s.plan.RepeatCount)
 		}
 	}
 	return nil
