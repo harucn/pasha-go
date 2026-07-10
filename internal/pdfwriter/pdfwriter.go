@@ -74,8 +74,6 @@ func (w *Writer) flush() error {
 	pageH := gopdf.PageSizeA4.H
 
 	for i, p := range w.pages {
-		pdf.AddPage()
-
 		imgW := float64(p.width)
 		imgH := float64(p.height)
 		scale := pageW / imgW
@@ -84,14 +82,14 @@ func (w *Writer) flush() error {
 		}
 		drawW := imgW * scale
 		drawH := imgH * scale
-		x := (pageW - drawW) / 2
-		y := (pageH - drawH) / 2
+
+		pdf.AddPageWithOption(gopdf.PageOption{PageSize: &gopdf.Rect{W: drawW, H: drawH}})
 
 		holder, err := gopdf.ImageHolderByBytes(p.pngBytes)
 		if err != nil {
 			return fmt.Errorf("pdfwriter: image holder page %d: %w", i+1, err)
 		}
-		if err := pdf.ImageByHolder(holder, x, y, &gopdf.Rect{W: drawW, H: drawH}); err != nil {
+		if err := pdf.ImageByHolder(holder, 0, 0, &gopdf.Rect{W: drawW, H: drawH}); err != nil {
 			return fmt.Errorf("pdfwriter: draw image page %d: %w", i+1, err)
 		}
 	}

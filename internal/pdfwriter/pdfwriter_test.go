@@ -3,8 +3,11 @@ package pdfwriter_test
 import (
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"testing"
 
 	"pasha-go/internal/pdfwriter"
@@ -18,6 +21,42 @@ func newSolidImage(w, h int, c color.Color) image.Image {
 		}
 	}
 	return img
+}
+
+func TestWriter_PageMatchesImageAspectRatio(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.pdf")
+
+	w, err := pdfwriter.New(path)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := w.AppendPage(newSolidImage(200, 100, color.RGBA{R: 255, A: 255})); err != nil {
+		t.Fatalf("AppendPage: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	// The first /MediaBox is the document default on the Pages node; the
+	// per-page override we care about comes after it.
+	re := regexp.MustCompile(`/MediaBox \[ 0 0 ([0-9.]+) ([0-9.]+) \]`)
+	all := re.FindAllSubmatch(raw, -1)
+	if len(all) < 2 {
+		t.Fatalf("no per-page /MediaBox found in PDF (got %d)", len(all))
+	}
+	m := all[len(all)-1]
+	pw, _ := strconv.ParseFloat(string(m[1]), 64)
+	ph, _ := strconv.ParseFloat(string(m[2]), 64)
+
+	if got, want := pw/ph, 2.0; math.Abs(got-want) > 0.01 {
+		t.Errorf("page aspect ratio = %v (%vx%v), want %v", got, pw, ph, want)
+	}
 }
 
 func TestWriter_AppendPagesAndClose_ProducesPdf(t *testing.T) {
